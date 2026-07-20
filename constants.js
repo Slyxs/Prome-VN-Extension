@@ -22,6 +22,19 @@ export const CLASSIFICATION_METHODS = {
  */
 export const EXPRESSION_API_NONE = 99;
 
+/**
+ * The folder name (relative to the user's `user/images` directory, served at `/user/images/`)
+ * where CG images should be placed to be picked up by the LLM-Based classification pipeline.
+ */
+export const PROME_CG_FOLDER = "prome-cgs";
+
+/**
+ * The folder name (relative to the user's `user/images` directory) reserved for custom
+ * textbox assets. Not used for classification yet, the folder is just kept ready for a
+ * future update.
+ */
+export const PROME_TEXTBOX_FOLDER = "prome-textboxes";
+
 const defaultTintValues = {
 	name: "Jarilo Midnight",
 	shared: false,
@@ -139,4 +152,6 @@ export const defaultSettings = {
 	llmAnalysisApiKey: "",
 	llmAnalysisModel: "",
 	llmAnalysisAvailableModels: [],
+	segmentLimitEnabled: false,
+	segmentLimit: 5,
 };

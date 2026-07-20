@@ -1,6 +1,6 @@
 import { getContext, extension_settings } from "../../../extensions.js";
 import { getRequestHeaders } from "../../../../script.js";
-import { extensionName, VN_MODES } from "./constants.js";
+import { extensionName, VN_MODES, PROME_CG_FOLDER, PROME_TEXTBOX_FOLDER } from "./constants.js";
 
 /**
  * Returns the last character chat message
@@ -217,4 +217,49 @@ export async function getAvailableBackgrounds() {
 	const chat = context.chatMetadata?.chat_backgrounds ?? [];
 
 	return { global, chat };
+}
+
+/**
+ * Lists the image files stored in one of the user's `user/images/<folder>` directories.
+ * The folder is automatically created server-side if it doesn't already exist.
+ * @param {string} folder - The folder name under `user/images`
+ * @returns {Promise<string[]>} - The list of file names found in the folder
+ */
+async function listUserImageFolder(folder) {
+	try {
+		const response = await fetch("/api/images/list", {
+			method: "POST",
+			headers: getRequestHeaders(),
+			body: JSON.stringify({ folder }),
+		});
+
+		if (!response.ok) return [];
+		return await response.json();
+	} catch (err) {
+		console.error(`[${extensionName}] Error listing image folder "${folder}": ${err}`);
+		return [];
+	}
+}
+
+/**
+ * Fetches the list of available CG labels (file names without extension) from the
+ * dedicated Prome CG folder (`user/images/prome-cgs`).
+ * @returns {Promise<string[]>} - The available CG labels
+ */
+export async function getAvailableCGs() {
+	const files = await listUserImageFolder(PROME_CG_FOLDER);
+	return files.map((file) => file.replace(/\.[^/.]+$/, ""));
+}
+
+/**
+ * Ensures the Prome CG and textbox asset folders exist on the server, creating them
+ * if necessary. The textbox folder isn't used anywhere yet, it's just kept ready for
+ * a future update.
+ * @returns {Promise<void>}
+ */
+export async function ensurePromeAssetFolders() {
+	await Promise.all([
+		listUserImageFolder(PROME_CG_FOLDER),
+		listUserImageFolder(PROME_TEXTBOX_FOLDER),
+	]);
 }

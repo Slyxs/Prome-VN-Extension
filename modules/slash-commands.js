@@ -27,6 +27,7 @@ import {
 	spritePackExists,
 	getAvailableExpressions,
 	getAvailableBackgrounds,
+	getAvailableCGs,
 } from "../utils.js";
 import { applyUserSprite, handleUserSprite } from "./user.js";
 import { visualNovelUpdateLayers } from "../../../expressions/index.js";
@@ -469,24 +470,26 @@ export function prepareSlashCommands() {
 				}
 
 				const backgrounds = await getAvailableBackgrounds();
+				const cgs = await getAvailableCGs();
 
 				console.log(
 					`[${extensionName}] Available expressions (sprites) by character:`,
 					expressions,
 				);
 				console.log(`[${extensionName}] Available backgrounds:`, backgrounds);
+				console.log(`[${extensionName}] Available CGs:`, cgs);
 
 				toastr.success(
-					`Logged expressions for ${characters.length} character(s) and ${backgrounds.global.length + backgrounds.chat.length} background(s) to the console.`,
+					`Logged expressions for ${characters.length} character(s), ${backgrounds.global.length + backgrounds.chat.length} background(s), and ${cgs.length} CG(s) to the console.`,
 					"Prome Assets Logged",
 				);
 
-				return JSON.stringify({ expressions, backgrounds });
+				return JSON.stringify({ expressions, backgrounds, cgs });
 			},
 			returns:
-				"a JSON string containing the available expressions per character and the available background images",
+				"a JSON string containing the available expressions per character, the available background images, and the available CGs",
 			helpString:
-				"(Prome Visual Novel Extension) Logs the list of available character expressions (including custom sprites) and background images to the browser console. Useful for debugging and building automation features.",
+				"(Prome Visual Novel Extension) Logs the list of available character expressions (including custom sprites), background images, and CGs to the browser console. Useful for debugging and building automation features.",
 		}),
 	);
 }

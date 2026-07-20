@@ -575,10 +575,10 @@
                             class="prome_vn_block flex-container flexFlowColumn prome_details_padding">
                             <h4 data-i18n="LLM Analysis Settings">LLM Analysis Settings</h4>
                             <small
-                                data-i18n="Connect to an OpenAI-compatible endpoint to analyze messages and choose expressions, backgrounds and CGs. Segment playback and CGs are not implemented yet, results are currently only logged to the browser console.">
+                                data-i18n="Connect to an OpenAI-compatible endpoint to analyze messages and choose expressions, backgrounds and CGs. Segment playback is not implemented yet, results are currently only logged to the browser console.">
                                 Connect to an OpenAI-compatible endpoint to analyze messages and choose expressions,
-                                backgrounds and CGs. Segment playback and CGs are not implemented yet &mdash; results
-                                are currently only logged to the browser console.
+                                backgrounds and CGs. Segment playback is not implemented yet &mdash; results are
+                                currently only logged to the browser console.
                             </small>
 
                             <label for="prome-analysis-url" data-i18n="API URL">API URL</label>
@@ -602,6 +602,35 @@
                                     <span data-i18n="Fetch Models">Fetch Models</span>
                                 </div>
                             </div>
+
+                            <hr />
+
+                            <label class="checkbox_label" for="prome-analysis-segment-limit-toggle"
+                                title="Cap the maximum number of segments the LLM is allowed to split a message into."
+                                data-i18n="[title]Cap the maximum number of segments the LLM is allowed to split a message into.">
+                                <input id="prome-analysis-segment-limit-toggle" type="checkbox" />
+                                <span data-i18n="Limit Maximum Segments">Limit Maximum Segments</span>
+                            </label>
+
+                            <div class="prome_vn_block flex-container flexFlowColumn">
+                                <label for="prome-analysis-segment-limit" data-i18n="Max Segments">Max Segments</label>
+                                <small
+                                    data-i18n="The maximum number of segments the LLM may split a single message into. This is enforced even if the model doesn't comply.">
+                                    The maximum number of segments the LLM may split a single message into. This is
+                                    enforced even if the model doesn't comply.
+                                </small>
+                                <input id="prome-analysis-segment-limit" type="number" class="text_pole" min="1"
+                                    max="20" step="1" />
+                            </div>
+
+                            <hr />
+
+                            <small
+                                data-i18n="CG images are picked up automatically from the user/images/prome-cgs folder (created automatically). Textbox assets will use user/images/prome-textboxes in a future update.">
+                                CGs are picked up automatically from the <b>user/images/prome-cgs</b> folder (created
+                                automatically on connect). A <b>user/images/prome-textboxes</b> folder is also reserved
+                                for custom textbox assets in a future update.
+                            </small>
                         </div>
                     </div>
                 </details>

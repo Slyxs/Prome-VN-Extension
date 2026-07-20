@@ -48,6 +48,7 @@ import {
 	isSheldVisible,
 	spritePackExists,
 	isGroupChat,
+	ensurePromeAssetFolders,
 } from "./utils.js";
 import {
 	applySpriteZoomTimer,
@@ -357,6 +358,7 @@ jQuery(async () => {
 	setupAutoHideJQuery();
 	loadSettings();
 	prepareSlashCommands();
+	ensurePromeAssetFolders();
 
 	eventSource.on(event_types.MESSAGE_SWIPED, applyShakeDebounce);
 	eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, stopShake);
