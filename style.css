@@ -129,62 +129,29 @@
 	display: flex;
 	align-items: flex-start;
 	padding: 2px;
-}
-
-/* Prome Textbox Editor (popup) */
-.prome-textbox-editor {
-	display: flex;
-	flex-direction: column;
-	gap: 8px;
-}
-
-.prome-textbox-editor-stage {
-	position: relative;
-	width: 100%;
-	max-width: 900px;
-	margin: 0 auto;
-	background: #000;
-	user-select: none;
-}
-
-.prome-textbox-editor-image {
-	display: block;
-	width: 100%;
-	height: auto;
-	pointer-events: none;
-	-webkit-user-drag: none;
-}
-
-.prome-textbox-editor-area {
-	position: absolute;
-	overflow: hidden;
 	box-sizing: border-box;
+}
+
+/* Live Textbox Layout Editor - editing happens directly on the real textbox */
+.prome-editor-area-label,
+.prome-editor-resize-handle {
+	display: none;
+}
+
+.prome-custom-textbox.prome-textbox-editing .prome-textbox-name-area,
+.prome-custom-textbox.prome-textbox-editing .prome-textbox-dialogue-area {
 	border: 2px dashed #66ccff;
 	background: rgba(102, 204, 255, 0.12);
 	cursor: move;
-	display: flex;
-	align-items: flex-start;
-	padding: 2px;
 }
 
-.prome-textbox-editor-area-name {
+.prome-custom-textbox.prome-textbox-editing .prome-textbox-name-area {
 	border-color: #ffcc00;
 	background: rgba(255, 204, 0, 0.12);
 }
 
-.prome-textbox-editor-area-disabled {
-	opacity: 0.35;
-	border-style: dotted;
-}
-
-.prome-textbox-editor-preview-text {
-	pointer-events: none;
-	white-space: pre-wrap;
-	word-break: break-word;
-	color: #fff;
-}
-
-.prome-editor-area-label {
+.prome-custom-textbox.prome-textbox-editing .prome-editor-area-label {
+	display: block;
 	position: absolute;
 	top: -20px;
 	left: 0;
@@ -196,7 +163,8 @@
 	pointer-events: none;
 }
 
-.prome-editor-resize-handle {
+.prome-custom-textbox.prome-textbox-editing .prome-editor-resize-handle {
+	display: block;
 	position: absolute;
 	right: -6px;
 	bottom: -6px;
@@ -208,19 +176,12 @@
 	cursor: nwse-resize;
 }
 
-.prome-textbox-editor-controls {
-	display: flex;
-	flex-direction: row;
-	gap: 16px;
-	flex-wrap: wrap;
+#prome-textbox-edit.prome-textbox-editing-active {
+	filter: brightness(75%) grayscale(1);
 }
 
-.prome-textbox-editor-column {
-	flex: 1;
-	min-width: 200px;
-	display: flex;
-	flex-direction: column;
-	gap: 4px;
+#prome-textbox-style-controls h4 {
+	margin: 0;
 }
 
 /* Prome Letterbox Settings */

@@ -650,9 +650,9 @@
 
                         <div class="prome_vn_block flex-container flexFlowColumn">
                             <label for="prome-textbox-profile-select" data-i18n="Your Textboxes">Your Textboxes</label>
-                            <small data-i18n="Upload an image for your textbox frame, then use the editor to drag and resize the name/dialogue areas directly on top of it.">
-                                Upload an image for your textbox frame, then use the editor to drag and resize the
-                                name/dialogue areas directly on top of it.
+                            <small data-i18n="Upload an image for your textbox frame, then click Edit Layout to drag and resize the name/dialogue areas directly on the real textbox.">
+                                Upload an image for your textbox frame, then click Edit Layout to drag and resize the
+                                name/dialogue areas directly on the real textbox.
                             </small>
                             <div class="flex-container flexFlowRow alignitemsflexend">
                                 <div class="prome_vn_block flex-container flexFlowColumn flex1">
@@ -674,7 +674,8 @@
                                         placeholder="Textbox name" data-i18n="[placeholder]Textbox name" />
                                 </div>
                                 <div id="prome-textbox-edit" class="menu_button menu_button_icon"
-                                    title="Open the visual layout editor" data-i18n="[title]Open the visual layout editor">
+                                    title="Drag and resize the name/dialogue areas directly on the on-screen textbox"
+                                    data-i18n="[title]Drag and resize the name/dialogue areas directly on the on-screen textbox">
                                     <i class="fa-solid fa-pen-to-square"></i>
                                     <span data-i18n="Edit Layout">Edit Layout</span>
                                 </div>
@@ -682,6 +683,122 @@
                                     title="Delete this textbox" data-i18n="[title]Delete this textbox">
                                     <i class="fa-solid fa-trash-can"></i>
                                     <span data-i18n="Delete">Delete</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <hr />
+
+                        <div id="prome-textbox-style-controls" class="prome_vn_block flex-container flexFlowColumn">
+                            <label class="title_restorable" data-i18n="Text Style">
+                                <span data-i18n="Text Style">Text Style</span>
+                            </label>
+                            <small data-i18n="Font, color and outline for each area. Changes apply live, even while editing the layout.">
+                                Font, color and outline for each area. Changes apply live, even while editing the
+                                layout.
+                            </small>
+
+                            <div class="flex-container flexFlowRow">
+                                <div class="prome_vn_block flex-container flexFlowColumn flex1">
+                                    <h4 data-i18n="Name Area">Name Area</h4>
+                                    <label class="checkbox_label">
+                                        <input type="checkbox" data-area="nameArea" data-field="enabled" />
+                                        <span data-i18n="Show Name">Show Name</span>
+                                    </label>
+
+                                    <label data-i18n="Font">Font</label>
+                                    <select class="text_pole" data-area="nameArea" data-field="fontFamily">
+                                        <option value="'Segoe UI', sans-serif">Segoe UI</option>
+                                        <option value="Arial, sans-serif">Arial</option>
+                                        <option value="Georgia, serif">Georgia</option>
+                                        <option value="'Times New Roman', serif">Times New Roman</option>
+                                        <option value="'Courier New', monospace">Courier New</option>
+                                        <option value="Verdana, sans-serif">Verdana</option>
+                                        <option value="'Trebuchet MS', sans-serif">Trebuchet MS</option>
+                                        <option value="Impact, sans-serif">Impact</option>
+                                        <option value="'Comic Sans MS', cursive">Comic Sans MS</option>
+                                        <option value="'Brush Script MT', cursive">Brush Script MT</option>
+                                    </select>
+
+                                    <label for="prome-textbox-name-fontsize" data-i18n="Font Size">Font Size</label>
+                                    <input id="prome-textbox-name-fontsize" type="number" class="text_pole" min="8"
+                                        max="96" step="1" data-area="nameArea" data-field="fontSize" />
+
+                                    <label data-i18n="Font Color">Font Color</label>
+                                    <toolcool-color-picker data-area="nameArea" data-field="fontColor"></toolcool-color-picker>
+
+                                    <div class="flex-container flexFlowRow">
+                                        <label class="checkbox_label">
+                                            <input type="checkbox" data-area="nameArea" data-field="bold" />
+                                            <span data-i18n="Bold">Bold</span>
+                                        </label>
+                                        <label class="checkbox_label">
+                                            <input type="checkbox" data-area="nameArea" data-field="italic" />
+                                            <span data-i18n="Italic">Italic</span>
+                                        </label>
+                                        <label class="checkbox_label">
+                                            <input type="checkbox" data-area="nameArea" data-field="shadow" />
+                                            <span data-i18n="Shadow">Shadow</span>
+                                        </label>
+                                    </div>
+
+                                    <label data-i18n="Outline Color">Outline Color</label>
+                                    <toolcool-color-picker data-area="nameArea" data-field="outlineColor"></toolcool-color-picker>
+
+                                    <label for="prome-textbox-name-outlinewidth" data-i18n="Outline Thickness">Outline
+                                        Thickness</label>
+                                    <input id="prome-textbox-name-outlinewidth" type="number" class="text_pole"
+                                        min="0" max="10" step="0.5" data-area="nameArea" data-field="outlineWidth" />
+                                </div>
+
+                                <div class="prome_vn_block flex-container flexFlowColumn flex1">
+                                    <h4 data-i18n="Dialogue Area">Dialogue Area</h4>
+
+                                    <label data-i18n="Font">Font</label>
+                                    <select class="text_pole" data-area="dialogueArea" data-field="fontFamily">
+                                        <option value="'Segoe UI', sans-serif">Segoe UI</option>
+                                        <option value="Arial, sans-serif">Arial</option>
+                                        <option value="Georgia, serif">Georgia</option>
+                                        <option value="'Times New Roman', serif">Times New Roman</option>
+                                        <option value="'Courier New', monospace">Courier New</option>
+                                        <option value="Verdana, sans-serif">Verdana</option>
+                                        <option value="'Trebuchet MS', sans-serif">Trebuchet MS</option>
+                                        <option value="Impact, sans-serif">Impact</option>
+                                        <option value="'Comic Sans MS', cursive">Comic Sans MS</option>
+                                        <option value="'Brush Script MT', cursive">Brush Script MT</option>
+                                    </select>
+
+                                    <label for="prome-textbox-dialogue-fontsize" data-i18n="Font Size">Font
+                                        Size</label>
+                                    <input id="prome-textbox-dialogue-fontsize" type="number" class="text_pole"
+                                        min="8" max="96" step="1" data-area="dialogueArea" data-field="fontSize" />
+
+                                    <label data-i18n="Font Color">Font Color</label>
+                                    <toolcool-color-picker data-area="dialogueArea" data-field="fontColor"></toolcool-color-picker>
+
+                                    <div class="flex-container flexFlowRow">
+                                        <label class="checkbox_label">
+                                            <input type="checkbox" data-area="dialogueArea" data-field="bold" />
+                                            <span data-i18n="Bold">Bold</span>
+                                        </label>
+                                        <label class="checkbox_label">
+                                            <input type="checkbox" data-area="dialogueArea" data-field="italic" />
+                                            <span data-i18n="Italic">Italic</span>
+                                        </label>
+                                        <label class="checkbox_label">
+                                            <input type="checkbox" data-area="dialogueArea" data-field="shadow" />
+                                            <span data-i18n="Shadow">Shadow</span>
+                                        </label>
+                                    </div>
+
+                                    <label data-i18n="Outline Color">Outline Color</label>
+                                    <toolcool-color-picker data-area="dialogueArea" data-field="outlineColor"></toolcool-color-picker>
+
+                                    <label for="prome-textbox-dialogue-outlinewidth"
+                                        data-i18n="Outline Thickness">Outline Thickness</label>
+                                    <input id="prome-textbox-dialogue-outlinewidth" type="number" class="text_pole"
+                                        min="0" max="10" step="0.5" data-area="dialogueArea"
+                                        data-field="outlineWidth" />
                                 </div>
                             </div>
                         </div>

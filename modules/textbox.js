@@ -1,6 +1,5 @@
 import { extension_settings } from "../../../../extensions.js";
 import { saveSettingsDebounced } from "../../../../../script.js";
-import { POPUP_TYPE, Popup } from "../../../../popup.js";
 import { extensionName } from "../constants.js";
 import { uploadTextboxImage } from "../utils.js";
 
@@ -8,22 +7,37 @@ import { uploadTextboxImage } from "../utils.js";
  * Custom Textboxes
  * -----------------
  * Renders a Ren'Py-style textbox that plays back a classified message one segment at a
- * time. Textboxes are fully configured in-app: the user uploads a frame image and then
- * uses the visual Textbox Editor (a popup) to drag/resize the name and dialogue areas
- * directly on top of a live preview of the image, plus basic font controls. Everything
- * is stored as a "profile" in the extension's own settings (`textboxProfiles`) - no
- * manual file/JSON placement required.
+ * time. Textboxes are fully configured in-app: the user uploads a frame image, then
+ * clicks "Edit Layout" to drag/resize the name and dialogue areas directly on the real,
+ * on-screen textbox (no separate popup/preview - what you see is exactly what plays
+ * back). Font family/size/color/bold/italic/shadow/outline are all editable live from
+ * the settings panel while editing. Everything is stored as a "profile" in the
+ * extension's own settings (`textboxProfiles`) - no manual file/JSON placement required.
  *
  * Profile shape:
  * {
  *   id: string,
  *   name: string,
  *   imageUrl: string,
- *   nameArea: { enabled, top, left, width, height, fontSize, fontColor, shadow },
- *   dialogueArea: { top, left, width, height, fontSize, fontColor, shadow },
+ *   nameArea: { enabled, top, left, width, height, fontFamily, fontSize, fontColor, bold, italic, shadow, outlineColor, outlineWidth },
+ *   dialogueArea: { top, left, width, height, fontFamily, fontSize, fontColor, bold, italic, shadow, outlineColor, outlineWidth },
  * }
- * (top/left/width/height are percentages of the textbox's own size, fontSize is in px.)
+ * (top/left/width/height are percentages of the textbox's own size, fontSize/outlineWidth are in px.)
  */
+
+const AREA_STYLE_DEFAULTS = {
+	fontFamily: "'Segoe UI', sans-serif",
+	fontSize: 18,
+	fontColor: "#ffffff",
+	bold: false,
+	italic: false,
+	shadow: false,
+	outlineColor: "#000000",
+	outlineWidth: 0,
+};
+
+/** Whether the live, on-screen layout editor is currently active. */
+let editModeActive = false;
 
 function settings() {
 	return extension_settings[extensionName];
@@ -46,15 +60,43 @@ function createDefaultProfile(name, imageUrl) {
 		id: `textbox_${Date.now()}`,
 		name,
 		imageUrl,
-		nameArea: { enabled: true, top: 4, left: 6, width: 30, height: 14, fontSize: 22, fontColor: "#ffcc00", shadow: true },
-		dialogueArea: { top: 22, left: 6, width: 88, height: 66, fontSize: 18, fontColor: "#ffffff", shadow: false },
+		nameArea: {
+			enabled: true,
+			top: 4,
+			left: 6,
+			width: 30,
+			height: 14,
+			...AREA_STYLE_DEFAULTS,
+			fontSize: 22,
+			fontColor: "#ffcc00",
+			bold: true,
+			shadow: true,
+		},
+		dialogueArea: {
+			top: 22,
+			left: 6,
+			width: 88,
+			height: 66,
+			...AREA_STYLE_DEFAULTS,
+		},
 	};
+}
+
+/**
+ * Backfills any missing style fields on a profile's areas with defaults, so profiles
+ * saved before new style options were added keep working without manual migration.
+ */
+function normalizeProfile(profile) {
+	profile.nameArea = Object.assign({ enabled: true }, AREA_STYLE_DEFAULTS, profile.nameArea);
+	profile.dialogueArea = Object.assign({}, AREA_STYLE_DEFAULTS, profile.dialogueArea);
+	return profile;
 }
 
 function getProfiles() {
 	if (!Array.isArray(settings().textboxProfiles)) {
 		settings().textboxProfiles = [];
 	}
+	settings().textboxProfiles.forEach(normalizeProfile);
 	return settings().textboxProfiles;
 }
 
@@ -74,10 +116,14 @@ function injectCustomTextboxElement() {
 			<div id="prome-textbox-drag-handle" class="prome-textbox-drag-handle fa-solid fa-grip" title="Drag to move"></div>
 			<img id="prome-textbox-bg" class="prome-textbox-bg" alt="" />
 			<div id="prome-textbox-name-area" class="prome-textbox-name-area">
+				<div class="prome-editor-area-label" data-i18n="Name">Name</div>
 				<span id="prome-textbox-name-text" class="prome-textbox-name-text"></span>
+				<div class="prome-editor-resize-handle"></div>
 			</div>
 			<div id="prome-textbox-dialogue-area" class="prome-textbox-dialogue-area">
+				<div class="prome-editor-area-label" data-i18n="Dialogue">Dialogue</div>
 				<span id="prome-textbox-dialogue-text" class="prome-textbox-dialogue-text"></span>
+				<div class="prome-editor-resize-handle"></div>
 			</div>
 		</div>
 	`;
@@ -101,11 +147,17 @@ function styleAreaBox($area, $text, area) {
 		height: `${area.height}%`,
 	});
 
-	$text.css({
-		fontSize: `${area.fontSize}px`,
-		color: area.fontColor,
-		textShadow: area.shadow ? "2px 2px 4px rgba(0, 0, 0, 0.8)" : "none",
-	});
+	const textEl = $text[0];
+	if (!textEl) return;
+
+	const outlineWidth = Number(area.outlineWidth) || 0;
+	textEl.style.fontFamily = area.fontFamily || AREA_STYLE_DEFAULTS.fontFamily;
+	textEl.style.fontSize = `${area.fontSize}px`;
+	textEl.style.fontWeight = area.bold ? "bold" : "normal";
+	textEl.style.fontStyle = area.italic ? "italic" : "normal";
+	textEl.style.color = area.fontColor;
+	textEl.style.textShadow = area.shadow ? "2px 2px 4px rgba(0, 0, 0, 0.8)" : "none";
+	textEl.style.webkitTextStroke = outlineWidth > 0 ? `${outlineWidth}px ${area.outlineColor || "#000000"}` : "0px transparent";
 }
 
 function applyScale() {
@@ -183,7 +235,7 @@ function makeDraggable($textbox, $handle) {
 export function applyCustomTextboxMode() {
 	injectCustomTextboxElement();
 
-	if (!settings().customTextboxEnabled) {
+	if (!settings().customTextboxEnabled && !editModeActive) {
 		clearTimers();
 		$("#prome-custom-textbox").addClass("displayNone");
 		return;
@@ -199,11 +251,12 @@ export function applyCustomTextboxMode() {
 	$("#prome-textbox-bg").attr("src", active.imageUrl);
 	styleAreaBox($("#prome-textbox-name-area"), $("#prome-textbox-name-text"), active.nameArea);
 	styleAreaBox($("#prome-textbox-dialogue-area"), $("#prome-textbox-dialogue-text"), active.dialogueArea);
-	$("#prome-textbox-name-area").toggle(Boolean(active.nameArea?.enabled));
+	$("#prome-textbox-name-area").toggle(Boolean(active.nameArea?.enabled) || editModeActive);
 
 	applyScale();
 	restorePosition();
 	$("#prome-custom-textbox").removeClass("displayNone");
+	$("#prome-custom-textbox").toggleClass("prome-textbox-editing", editModeActive);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -309,76 +362,23 @@ export function playSequenceInTextbox(sequence, characterName) {
 }
 
 /* ---------------------------------------------------------------------- */
-/* Textbox Editor Popup (drag/resize layout editor)                      */
+/* Live Layout Editor (drag/resize the real, on-screen textbox)          */
 /* ---------------------------------------------------------------------- */
 
-function buildEditorHtml(profile) {
-	return `
-		<div class="prome-textbox-editor">
-			<h3 data-i18n="Textbox Editor">Textbox Editor</h3>
-			<small data-i18n="Drag the boxes to move them, drag the corner handle to resize. Everything is saved automatically.">
-				Drag the boxes to move them, drag the corner handle to resize. Everything is saved automatically.
-			</small>
-
-			<div class="prome-textbox-editor-stage">
-				<img class="prome-textbox-editor-image" src="${profile.imageUrl}" alt="" />
-				<div class="prome-textbox-editor-area prome-textbox-editor-area-name" data-area="nameArea">
-					<div class="prome-editor-area-label" data-i18n="Name">Name</div>
-					<span class="prome-textbox-editor-preview-text">Character Name</span>
-					<div class="prome-editor-resize-handle"></div>
-				</div>
-				<div class="prome-textbox-editor-area prome-textbox-editor-area-dialogue" data-area="dialogueArea">
-					<div class="prome-editor-area-label" data-i18n="Dialogue">Dialogue</div>
-					<span class="prome-textbox-editor-preview-text">This is a preview of the dialogue text area. Drag and resize me to fit your textbox image.</span>
-					<div class="prome-editor-resize-handle"></div>
-				</div>
-			</div>
-
-			<div class="prome-textbox-editor-controls">
-				<div class="prome-textbox-editor-column">
-					<h4 data-i18n="Name Area">Name Area</h4>
-					<label class="checkbox_label" data-area="nameArea" data-field="enabled">
-						<input type="checkbox" ${profile.nameArea.enabled ? "checked" : ""} />
-						<span data-i18n="Show Name">Show Name</span>
-					</label>
-					<label data-i18n="Font Size">Font Size</label>
-					<input type="number" class="text_pole" min="8" max="72" step="1" data-area="nameArea" data-field="fontSize" value="${profile.nameArea.fontSize}" />
-					<label data-i18n="Font Color">Font Color</label>
-					<input type="color" data-area="nameArea" data-field="fontColor" value="${profile.nameArea.fontColor}" />
-					<label class="checkbox_label" data-area="nameArea" data-field="shadow">
-						<input type="checkbox" ${profile.nameArea.shadow ? "checked" : ""} />
-						<span data-i18n="Text Shadow">Text Shadow</span>
-					</label>
-				</div>
-				<div class="prome-textbox-editor-column">
-					<h4 data-i18n="Dialogue Area">Dialogue Area</h4>
-					<label data-i18n="Font Size">Font Size</label>
-					<input type="number" class="text_pole" min="8" max="72" step="1" data-area="dialogueArea" data-field="fontSize" value="${profile.dialogueArea.fontSize}" />
-					<label data-i18n="Font Color">Font Color</label>
-					<input type="color" data-area="dialogueArea" data-field="fontColor" value="${profile.dialogueArea.fontColor}" />
-					<label class="checkbox_label" data-area="dialogueArea" data-field="shadow">
-						<input type="checkbox" ${profile.dialogueArea.shadow ? "checked" : ""} />
-						<span data-i18n="Text Shadow">Text Shadow</span>
-					</label>
-				</div>
-			</div>
-		</div>
-	`;
+function areaSelector(areaKey) {
+	return areaKey === "nameArea" ? "#prome-textbox-name-area" : "#prome-textbox-dialogue-area";
 }
 
-function refreshEditorPreview($popupContent, profile) {
-	for (const areaKey of ["nameArea", "dialogueArea"]) {
-		const $area = $popupContent.find(`.prome-textbox-editor-area[data-area="${areaKey}"]`);
-		const $text = $area.find(".prome-textbox-editor-preview-text");
-		styleAreaBox($area, $text, profile[areaKey]);
-		if (areaKey === "nameArea") {
-			$area.toggleClass("prome-textbox-editor-area-disabled", !profile.nameArea.enabled);
-		}
-	}
-}
-
-function setupAreaDragResize($popupContent, $stage, areaKey, profile, onChange) {
-	const $area = $popupContent.find(`.prome-textbox-editor-area[data-area="${areaKey}"]`);
+/**
+ * Enables dragging (mousedown on the area) and resizing (mousedown on its corner handle)
+ * of a name/dialogue area directly on the real, on-screen textbox. Only takes effect
+ * while edit mode is active. Percentages are computed against the textbox's own
+ * bounding box, matching the same top/left/width/height % fields used for playback.
+ * @param {"nameArea"|"dialogueArea"} areaKey
+ */
+function setupLiveAreaDragResize(areaKey) {
+	const $stage = $("#prome-custom-textbox");
+	const $area = $(areaSelector(areaKey));
 	let mode = null;
 	let startX = 0;
 	let startY = 0;
@@ -390,10 +390,10 @@ function setupAreaDragResize($popupContent, $stage, areaKey, profile, onChange) 
 
 	function onMove(event) {
 		if (!mode) return;
+		const rect = stageRect();
 		const point = getPoint(event);
 		const dx = point.clientX - startX;
 		const dy = point.clientY - startY;
-		const rect = stageRect();
 
 		let { top, left, width, height } = startRect;
 
@@ -416,21 +416,25 @@ function setupAreaDragResize($popupContent, $stage, areaKey, profile, onChange) 
 	function onUp() {
 		if (!mode) return;
 		mode = null;
-		$(document).off("mousemove.prometbeditor touchmove.prometbeditor");
-		$(document).off("mouseup.prometbeditor touchend.prometbeditor");
+		$(document).off("mousemove.prometbedit touchmove.prometbedit");
+		$(document).off("mouseup.prometbedit touchend.prometbedit");
+
+		const active = getActiveProfile();
+		if (!active) return;
 
 		const rect = stageRect();
 		const areaRect = $area[0].getBoundingClientRect();
-		profile[areaKey].left = clamp(((areaRect.left - rect.left) / rect.width) * 100, 0, 100);
-		profile[areaKey].top = clamp(((areaRect.top - rect.top) / rect.height) * 100, 0, 100);
-		profile[areaKey].width = clamp((areaRect.width / rect.width) * 100, 5, 100);
-		profile[areaKey].height = clamp((areaRect.height / rect.height) * 100, 5, 100);
+		active[areaKey].left = clamp(((areaRect.left - rect.left) / rect.width) * 100, 0, 100);
+		active[areaKey].top = clamp(((areaRect.top - rect.top) / rect.height) * 100, 0, 100);
+		active[areaKey].width = clamp((areaRect.width / rect.width) * 100, 5, 100);
+		active[areaKey].height = clamp((areaRect.height / rect.height) * 100, 5, 100);
 
-		onChange();
+		saveSettingsDebounced();
 	}
 
 	function startDrag(newMode) {
 		return (event) => {
+			if (!editModeActive) return;
 			mode = newMode;
 			const point = getPoint(event);
 			startX = point.clientX;
@@ -444,8 +448,8 @@ function setupAreaDragResize($popupContent, $stage, areaKey, profile, onChange) 
 				height: areaRect.height,
 			};
 
-			$(document).on("mousemove.prometbeditor touchmove.prometbeditor", onMove);
-			$(document).on("mouseup.prometbeditor touchend.prometbeditor", onUp);
+			$(document).on("mousemove.prometbedit touchmove.prometbedit", onMove);
+			$(document).on("mouseup.prometbedit touchend.prometbedit", onUp);
 			event.preventDefault();
 			event.stopPropagation();
 		};
@@ -455,58 +459,56 @@ function setupAreaDragResize($popupContent, $stage, areaKey, profile, onChange) 
 	$area.find(".prome-editor-resize-handle").on("mousedown touchstart", startDrag("resize"));
 }
 
-function setupEditorControls($popupContent, profile, onChange) {
-	$popupContent.find("input[data-area]").on("input click change", (event) => {
-		const $input = $(event.currentTarget);
-		const areaKey = $input.data("area");
-		const field = $input.data("field");
-		const area = profile[areaKey];
-		if (!area) return;
-
-		if ($input.attr("type") === "checkbox") {
-			area[field] = Boolean($input.prop("checked"));
-		} else if ($input.attr("type") === "number") {
-			area[field] = clamp(Number($input.val()) || 0, 8, 72);
-		} else {
-			area[field] = String($input.val());
-		}
-
-		refreshEditorPreview($popupContent, profile);
-		onChange();
-	});
+function updateEditButtonLabel() {
+	$("#prome-textbox-edit span").text(editModeActive ? "Done Editing" : "Edit Layout");
+	$("#prome-textbox-edit i").toggleClass("fa-pen-to-square", !editModeActive).toggleClass("fa-check", editModeActive);
+	$("#prome-textbox-edit").toggleClass("prome-textbox-editing-active", editModeActive);
 }
 
 /**
- * Opens the full drag/resize Textbox Editor popup for the given profile.
- * @param {object} profile - The textbox profile to edit
+ * Turns on the live layout editor: forces the real, on-screen textbox visible (even if
+ * the extension is otherwise disabled) and lets the user drag/resize its name/dialogue
+ * areas directly. Placeholder text is shown if nothing is currently playing.
  */
-async function openTextboxEditor(profile) {
-	const html = buildEditorHtml(profile);
+function enterTextboxEditMode() {
+	const active = getActiveProfile();
+	if (!active) {
+		toastr.warning("Add or select a textbox first.", "Prome Textbox");
+		return;
+	}
 
-	const popup = new Popup(html, POPUP_TYPE.TEXT, "", {
-		wide: true,
-		large: true,
-		allowVerticalScrolling: true,
-		okButton: "Close",
-		cancelButton: false,
-		onOpen: (openedPopup) => {
-			const $content = $(openedPopup.content);
-			const $stage = $content.find(".prome-textbox-editor-stage");
+	editModeActive = true;
+	applyCustomTextboxMode();
 
-			function onChange() {
-				saveSettingsDebounced();
-				applyCustomTextboxMode();
-				refreshTextboxProfileSelect();
-			}
+	if (!currentSequence.length) {
+		$("#prome-textbox-name-text").text("Character Name");
+		$("#prome-textbox-dialogue-text").text(
+			"This is a preview of the dialogue text. Drag the boxes to move them, drag the corner handle to resize.",
+		);
+	}
 
-			refreshEditorPreview($content, profile);
-			setupAreaDragResize($content, $stage, "nameArea", profile, onChange);
-			setupAreaDragResize($content, $stage, "dialogueArea", profile, onChange);
-			setupEditorControls($content, profile, onChange);
-		},
-	});
+	updateEditButtonLabel();
+}
 
-	await popup.show();
+/** Turns off the live layout editor and restores normal playback/visibility state. */
+function exitTextboxEditMode() {
+	editModeActive = false;
+
+	if (!currentSequence.length) {
+		$("#prome-textbox-name-text").text("");
+		$("#prome-textbox-dialogue-text").text("");
+	}
+
+	applyCustomTextboxMode();
+	updateEditButtonLabel();
+}
+
+function onTextboxEdit_Click() {
+	if (editModeActive) {
+		exitTextboxEditMode();
+	} else {
+		enterTextboxEditMode();
+	}
 }
 
 /* ---------------------------------------------------------------------- */
@@ -553,9 +555,11 @@ function onCustomTextboxEnable_Click(event) {
 }
 
 function onTextboxProfileSelect_Change(event) {
+	if (editModeActive) exitTextboxEditMode();
 	settings().activeTextboxId = String($(event.target).val()) || null;
 	saveSettingsDebounced();
 	updateProfileControlsState();
+	refreshAreaStyleControls();
 	applyCustomTextboxMode();
 }
 
@@ -580,10 +584,10 @@ async function onTextboxFile_Change(event) {
 		saveSettingsDebounced();
 
 		refreshTextboxProfileSelect();
-		applyCustomTextboxMode();
-		toastr.success("Textbox uploaded! Opening the editor...", "Prome Textbox");
+		refreshAreaStyleControls();
+		toastr.success("Textbox uploaded! Drag the boxes on the textbox to position them.", "Prome Textbox");
 
-		await openTextboxEditor(profile);
+		enterTextboxEditMode();
 	} catch (err) {
 		console.error(`[${extensionName}] Failed to upload textbox image:`, err);
 		toastr.error(`Could not upload the image: ${err.message}`, "Prome Textbox");
@@ -598,26 +602,20 @@ function onTextboxName_Input(event) {
 	refreshTextboxProfileSelect();
 }
 
-async function onTextboxEdit_Click() {
-	const active = getActiveProfile();
-	if (!active) {
-		toastr.warning("Add or select a textbox first.", "Prome Textbox");
-		return;
-	}
-	await openTextboxEditor(active);
-}
-
 function onTextboxDelete_Click() {
 	const active = getActiveProfile();
 	if (!active) return;
 
 	if (!confirm(`Delete the textbox "${active.name}"? This cannot be undone.`)) return;
 
+	if (editModeActive) exitTextboxEditMode();
+
 	settings().textboxProfiles = getProfiles().filter((profile) => profile.id !== active.id);
 	settings().activeTextboxId = null;
 	saveSettingsDebounced();
 
 	refreshTextboxProfileSelect();
+	refreshAreaStyleControls();
 	applyCustomTextboxMode();
 }
 
@@ -678,6 +676,58 @@ function onTextboxPreview_Click() {
 }
 
 /**
+ * Reads the current value of a style control input/picker (number, checkbox, text, or a
+ * <toolcool-color-picker>) into the right JS type for its profile field.
+ */
+function readStyleControlValue($input, field, event) {
+	if (field === "fontColor" || field === "outlineColor") {
+		return event?.detail?.rgba ?? $input.attr("color");
+	}
+	if ($input.attr("type") === "checkbox") {
+		return Boolean($input.prop("checked"));
+	}
+	if ($input.attr("type") === "number") {
+		return Number($input.val()) || 0;
+	}
+	return String($input.val());
+}
+
+function onAreaStyleControl_Change(event) {
+	const active = getActiveProfile();
+	if (!active) return;
+
+	const $input = $(event.currentTarget);
+	const areaKey = $input.data("area");
+	const field = $input.data("field");
+	const area = active[areaKey];
+	if (!area) return;
+
+	area[field] = readStyleControlValue($input, field, event);
+	saveSettingsDebounced();
+	applyCustomTextboxMode();
+}
+
+/** Populates all font/style controls in the settings panel from the active profile. */
+function refreshAreaStyleControls() {
+	const active = getActiveProfile();
+	$("#prome-textbox-style-controls").toggle(Boolean(active));
+	if (!active) return;
+
+	for (const areaKey of ["nameArea", "dialogueArea"]) {
+		const area = active[areaKey];
+		$(`[data-area="${areaKey}"][data-field="fontFamily"]`).val(area.fontFamily);
+		$(`[data-area="${areaKey}"][data-field="fontSize"]`).val(area.fontSize);
+		$(`[data-area="${areaKey}"][data-field="fontColor"]`).attr("color", area.fontColor);
+		$(`[data-area="${areaKey}"][data-field="bold"]`).prop("checked", Boolean(area.bold));
+		$(`[data-area="${areaKey}"][data-field="italic"]`).prop("checked", Boolean(area.italic));
+		$(`[data-area="${areaKey}"][data-field="shadow"]`).prop("checked", Boolean(area.shadow));
+		$(`[data-area="${areaKey}"][data-field="outlineColor"]`).attr("color", area.outlineColor);
+		$(`[data-area="${areaKey}"][data-field="outlineWidth"]`).val(area.outlineWidth);
+	}
+	$('[data-area="nameArea"][data-field="enabled"]').prop("checked", Boolean(active.nameArea.enabled));
+}
+
+/**
  * Populates the Custom Textbox settings UI from the current extension settings.
  */
 export function setupCustomTextboxHTML() {
@@ -694,6 +744,7 @@ export function setupCustomTextboxHTML() {
 		.prop("disabled", !settings().textboxTextStreaming);
 
 	refreshTextboxProfileSelect();
+	refreshAreaStyleControls();
 	applyCustomTextboxMode();
 }
 
@@ -720,10 +771,15 @@ export function setupCustomTextboxJQuery() {
 	$("#prome-textbox-reset-position").on("click", onTextboxResetPosition_Click);
 	$("#prome-textbox-preview").on("click", onTextboxPreview_Click);
 
+	$("[data-area][data-field]").on("input change", onAreaStyleControl_Change);
+
 	$(document).on("click", "#prome-custom-textbox", (event) => {
+		if (editModeActive) return;
 		if ($(event.target).closest("#prome-textbox-drag-handle").length) return;
 		onTextboxClick();
 	});
 
 	makeDraggable($("#prome-custom-textbox"), $("#prome-textbox-drag-handle"));
+	setupLiveAreaDragResize("nameArea");
+	setupLiveAreaDragResize("dialogueArea");
 }
