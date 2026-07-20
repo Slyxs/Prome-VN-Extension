@@ -1,4 +1,5 @@
 import { getContext, extension_settings } from "../../../extensions.js";
+import { getRequestHeaders } from "../../../../script.js";
 import { extensionName, VN_MODES } from "./constants.js";
 
 /**
@@ -151,4 +152,69 @@ export async function spritePackExists(spritePack) {
 		return false;
 	}
 	return sprites.length > 0;
+}
+
+/**
+ * Resolves the sprite folder name for a character, respecting any
+ * expression folder override the user has configured (see `/expression-folder-override`).
+ * @param {object} character - The character object
+ * @returns {string} - The sprite folder name to look up sprites under
+ */
+export function getSpriteFolderName(character) {
+	const avatarFileName = character.avatar.replace(/\.[^/.]+$/, "");
+	const override = extension_settings.expressionOverrides?.find(
+		(e) => e.name === avatarFileName,
+	);
+	return override?.path || character.name;
+}
+
+/**
+ * Fetches the list of available expression labels (sprites) for a character,
+ * including any custom-named sprites the user has added.
+ * @param {object} character - The character object
+ * @returns {Promise<string[]>} - A unique list of available expression labels
+ */
+export async function getAvailableExpressions(character) {
+	if (!character) return [];
+
+	const spriteFolderName = getSpriteFolderName(character);
+	const { sprites, err } = await getSpriteList(spriteFolderName);
+
+	if (err) {
+		console.error(
+			`[${extensionName}] Error fetching expressions for "${spriteFolderName}": ${err}`,
+		);
+		return [];
+	}
+
+	return [...new Set(sprites.map((sprite) => sprite.label))];
+}
+
+/**
+ * Fetches the list of available background images, both the global/system
+ * backgrounds and the ones locked to the current chat.
+ * @returns {Promise<{global: string[], chat: string[]}>} - The available backgrounds
+ */
+export async function getAvailableBackgrounds() {
+	let global = [];
+
+	try {
+		const response = await fetch("/api/backgrounds/all", {
+			method: "POST",
+			headers: getRequestHeaders(),
+			body: JSON.stringify({}),
+		});
+
+		if (response.ok) {
+			const { images } = await response.json();
+			global = images.map((image) => image.filename);
+		}
+	} catch (err) {
+		console.error(`[${extensionName}] Error fetching background list: ${err}`);
+	}
+
+	const context = getContext();
+	const chat = context.chatMetadata?.chat_backgrounds ?? [];
+
+	return { global, chat };
 }

@@ -10,7 +10,7 @@ import {
 } from "../../../../slash-commands/SlashCommandEnumValue.js";
 
 import { VN_MODES, extensionName } from "../constants.js";
-import { extension_settings } from "../../../../extensions.js";
+import { extension_settings, getContext } from "../../../../extensions.js";
 import { saveSettingsDebounced } from "../../../../../script.js";
 
 import { applyLetterboxMode } from "./letterbox.js";
@@ -22,7 +22,12 @@ import {
 import { applySpriteShake } from "./shake.js";
 import { applySpriteShadow } from "./shadows.js";
 import { applyTint } from "./tint.js";
-import { isGroupChat, spritePackExists } from "../utils.js";
+import {
+	isGroupChat,
+	spritePackExists,
+	getAvailableExpressions,
+	getAvailableBackgrounds,
+} from "../utils.js";
 import { applyUserSprite, handleUserSprite } from "./user.js";
 import { visualNovelUpdateLayers } from "../../../expressions/index.js";
 
@@ -432,6 +437,56 @@ export function prepareSlashCommands() {
 			},
 			helpString:
 				"(Prome Visual Novel Extension) Updates the layers of the visual novel UI in case of any issues [Group Chat Only].",
+		}),
+	);
+
+	SlashCommandParser.addCommandObject(
+		SlashCommand.fromProps({
+			name: "prome-list-assets",
+			aliases: ["list-prome-assets"],
+			callback: async () => {
+				const context = getContext();
+				let characters = [];
+
+				if (isGroupChat()) {
+					const group = context.groups.find((x) => x.id === context.groupId);
+					characters = group.members
+						.filter(
+							(avatar) =>
+								avatar !== "prome-user" &&
+								!group.disabled_members.includes(avatar),
+						)
+						.map((avatar) => context.characters.find((c) => c.avatar === avatar))
+						.filter(Boolean);
+				} else if (context.characterId !== undefined) {
+					const character = context.characters[context.characterId];
+					if (character) characters = [character];
+				}
+
+				const expressions = {};
+				for (const character of characters) {
+					expressions[character.name] = await getAvailableExpressions(character);
+				}
+
+				const backgrounds = await getAvailableBackgrounds();
+
+				console.log(
+					`[${extensionName}] Available expressions (sprites) by character:`,
+					expressions,
+				);
+				console.log(`[${extensionName}] Available backgrounds:`, backgrounds);
+
+				toastr.success(
+					`Logged expressions for ${characters.length} character(s) and ${backgrounds.global.length + backgrounds.chat.length} background(s) to the console.`,
+					"Prome Assets Logged",
+				);
+
+				return JSON.stringify({ expressions, backgrounds });
+			},
+			returns:
+				"a JSON string containing the available expressions per character and the available background images",
+			helpString:
+				"(Prome Visual Novel Extension) Logs the list of available character expressions (including custom sprites) and background images to the browser console. Useful for debugging and building automation features.",
 		}),
 	);
 }
