@@ -158,17 +158,20 @@ function buildSystemPrompt({ expressions, backgrounds, cgs, segmentLimit }) {
 
 	const lines = [
 		"You are the narrative director of a visual novel-style roleplay chat.",
-		"You will be given the latest message from a character. Split the message into consecutive segments based on shifts in emotion, scene or event, then choose the best matching expression, background and CG for each segment.",
+		"You will be given the latest message from a character. Split the message into consecutive segments based on shifts in emotion/expression or scene/background, then choose the best matching expression, background and CG for each segment.",
 		"",
 		`Available expressions for this character: ${expressions.length ? expressions.join(", ") : "(none available)"}`,
 		`Available backgrounds: ${backgrounds.length ? backgrounds.join(", ") : "(none available)"}`,
 		`Available CGs: ${cgs.length ? cgs.join(", ") : "(none available yet, always use null)"}`,
 		"",
+		"Your task must be done accurately: carefully read the whole message first and identify every point where the character's emotion/expression changes, and every point where the scene/location (background) changes, before splitting it into segments. Do not miss real changes, and do not invent changes that are not actually there.",
+		"",
 		"Rules:",
-		"- Only use values from the lists above, matched exactly (case-sensitive). If nothing fits, use null.",
-		"- \"expression\" should be null if the segment doesn't warrant a sprite change.",
-		"- \"background\" should be null unless the scene/location changes in that segment.",
+		"- Only use values from the lists above, matched exactly (case-sensitive), for \"expression\", \"background\" and \"cg\".",
+		"- \"expression\" must NEVER be null or an empty string. Every single segment, with no exceptions, must specify the character's current expression as one of the exact values from the \"Available expressions\" list above, even if it is the same expression as the previous segment (i.e. the character's expression did not change in that segment). Pick whichever available expression most closely matches the character's emotional/physical state during that segment.",
+		"- \"background\" should be null unless the scene/location genuinely changes in that segment. Do not set a background just because a segment exists; only set it on the segment where the scene/location actually changes.",
 		"- \"cg\" should be null unless a special event should show a CG instead of the character sprite.",
+		"- Never output a value for \"expression\", \"background\" or \"cg\" that isn't an exact, verbatim entry from the lists above. If you are unsure, pick the closest matching entry from the list rather than inventing a new one (except \"background\"/\"cg\", which may be null).",
 		"",
 		"CRITICAL TEXT INTEGRITY RULES (violating these invalidates your entire response):",
 		"- \"text_segment\" must be an EXACT, VERBATIM, contiguous substring of the original message: same characters, spelling, punctuation, capitalization, whitespace, quotes, asterisks and formatting.",
@@ -323,6 +326,54 @@ function reconcileSequenceWithOriginalText(parsed, originalText) {
 }
 
 /**
+ * Guarantees that every segment ends up with a valid, non-null expression taken from the
+ * character's actual available sprites, and that "background"/"cg" are either null or a
+ * value that actually exists. The LLM is instructed to always pick a real expression and
+ * never invent values, but it can still hallucinate a name, or leave a segment's expression
+ * empty/null - this closes that gap client-side so a segment with no expression can never
+ * reach the playback pipeline.
+ * @param {object[]} sequence - The reconciled sequence
+ * @param {string[]} validExpressions - The character's actual available expression labels
+ * @param {string[]} validBackgrounds - The actual available background names
+ * @param {string[]} validCgs - The actual available CG names
+ * @returns {{sequence: object[], modified: boolean}} - The validated sequence
+ */
+function validateSequenceClassifications(sequence, validExpressions, validBackgrounds, validCgs) {
+	let modified = false;
+	let lastValidExpression = null;
+
+	const validated = sequence.map((item) => {
+		const result = { ...item };
+
+		if (result.expression && validExpressions.includes(result.expression)) {
+			lastValidExpression = result.expression;
+		} else {
+			// Invalid, hallucinated, or missing expression: never leave it empty. Carry
+			// forward the last known-good expression (the character's expression didn't
+			// change), or fall back to the first available one if this is the first segment.
+			const fallback = lastValidExpression ?? validExpressions[0] ?? null;
+			if (result.expression !== fallback) modified = true;
+			result.expression = fallback;
+			if (fallback) lastValidExpression = fallback;
+		}
+
+		if (result.background && !validBackgrounds.includes(result.background)) {
+			modified = true;
+			result.background = null;
+		}
+
+		if (result.cg && !validCgs.includes(result.cg)) {
+			modified = true;
+			result.cg = null;
+		}
+
+		return result;
+	});
+
+	return { sequence: validated, modified };
+}
+
+/**
  * Enforces the user-configured maximum segment count by merging any segments beyond
  * the limit into the final one. Never drops or alters any text.
  * @param {object[]} sequence - The reconciled sequence
@@ -417,7 +468,7 @@ export async function analyzeMessageWithLLM(messageId) {
 					{ role: "system", content: systemPrompt },
 					{ role: "user", content: originalText },
 				],
-				temperature: 0.2,
+				temperature: 0.8,
 			}),
 		});
 
@@ -438,12 +489,22 @@ export async function analyzeMessageWithLLM(messageId) {
 			return;
 		}
 
-		const { sequence, modified } = reconcileSequenceWithOriginalText(parsed, originalText);
-		const finalSequence = enforceSegmentLimit(sequence, segmentLimit);
+		const { sequence: reconciledSequence, modified: textModified } = reconcileSequenceWithOriginalText(parsed, originalText);
+		const { sequence: validatedSequence, modified: classificationModified } = validateSequenceClassifications(
+			reconciledSequence, expressions, backgrounds, cgs,
+		);
+		const finalSequence = enforceSegmentLimit(validatedSequence, segmentLimit);
 
-		if (modified) {
+		if (textModified) {
 			console.warn(
 				`${LOG_TAG} The model's response didn't perfectly preserve the original text. Segments were realigned to guarantee no characters were lost or changed.`,
+				LOG_STYLE_TAG, LOG_STYLE_WARN,
+			);
+		}
+
+		if (classificationModified) {
+			console.warn(
+				`${LOG_TAG} The model returned a missing/invalid expression, background or CG on at least one segment. Invalid values were corrected (expressions carried forward, backgrounds/CGs cleared) to guarantee every segment has a valid expression.`,
 				LOG_STYLE_TAG, LOG_STYLE_WARN,
 			);
 		}
