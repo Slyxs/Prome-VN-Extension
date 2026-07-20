@@ -115,6 +115,16 @@ function injectCustomTextboxElement() {
 		<div id="prome-custom-textbox" class="prome-custom-textbox displayNone">
 			<div id="prome-textbox-drag-handle" class="prome-textbox-drag-handle fa-solid fa-grip" title="Drag to move"></div>
 			<img id="prome-textbox-bg" class="prome-textbox-bg" alt="" />
+			<div id="prome-textbox-editor-grid" class="prome-textbox-editor-grid">
+				<div class="prome-editor-grid-line prome-editor-grid-line-v" style="left:25%"></div>
+				<div class="prome-editor-grid-line prome-editor-grid-line-v prome-editor-grid-line-center" style="left:50%"></div>
+				<div class="prome-editor-grid-line prome-editor-grid-line-v" style="left:75%"></div>
+				<div class="prome-editor-grid-line prome-editor-grid-line-h" style="top:25%"></div>
+				<div class="prome-editor-grid-line prome-editor-grid-line-h prome-editor-grid-line-center" style="top:50%"></div>
+				<div class="prome-editor-grid-line prome-editor-grid-line-h" style="top:75%"></div>
+				<div id="prome-textbox-guide-v" class="prome-editor-snap-guide prome-editor-snap-guide-v"></div>
+				<div id="prome-textbox-guide-h" class="prome-editor-snap-guide prome-editor-snap-guide-h"></div>
+			</div>
 			<div id="prome-textbox-name-area" class="prome-textbox-name-area">
 				<div class="prome-editor-area-label" data-i18n="Name">Name</div>
 				<span id="prome-textbox-name-text" class="prome-textbox-name-text"></span>
@@ -369,6 +379,47 @@ function areaSelector(areaKey) {
 	return areaKey === "nameArea" ? "#prome-textbox-name-area" : "#prome-textbox-dialogue-area";
 }
 
+/* Alignment grid shown while editing - snap fractions (0/25/50/75/100%) of the stage's
+ * own width/height, used both for the static visual grid lines and for snapping. */
+const SNAP_FRACTIONS = [0, 0.25, 0.5, 0.75, 1];
+const SNAP_THRESHOLD_PX = 8;
+
+/**
+ * Looks for the nearest grid line (0/25/50/75/100% of `axisSize`) to any of the given
+ * candidate positions (e.g. an area's left/center/right edge, in px relative to the
+ * stage). Returns the best match within `SNAP_THRESHOLD_PX`, or `null` if none is close
+ * enough.
+ * @param {number[]} candidates - positions (px, relative to the stage) to test
+ * @param {number} axisSize - the stage's width or height in px
+ * @returns {{offset: number, guidePct: number}|null} `offset` to add to move/resize the
+ * candidate onto the grid line; `guidePct` is the line's position for the guide overlay.
+ */
+function findSnap(candidates, axisSize) {
+	let best = null;
+
+	for (const fraction of SNAP_FRACTIONS) {
+		const target = axisSize * fraction;
+		for (const candidate of candidates) {
+			const distance = Math.abs(candidate - target);
+			if (distance <= SNAP_THRESHOLD_PX && (!best || distance < best.distance)) {
+				best = { distance, offset: target - candidate, guidePct: fraction * 100 };
+			}
+		}
+	}
+
+	return best;
+}
+
+/** Shows/hides the vertical/horizontal snap guide lines based on the current snap result. */
+function updateSnapGuides(snapX, snapY) {
+	$("#prome-textbox-guide-v")
+		.toggleClass("active", Boolean(snapX))
+		.css("left", snapX ? `${snapX.guidePct}%` : "");
+	$("#prome-textbox-guide-h")
+		.toggleClass("active", Boolean(snapY))
+		.css("top", snapY ? `${snapY.guidePct}%` : "");
+}
+
 /**
  * Enables dragging (mousedown on the area) and resizing (mousedown on its corner handle)
  * of a name/dialogue area directly on the real, on-screen textbox. Only takes effect
@@ -396,14 +447,30 @@ function setupLiveAreaDragResize(areaKey) {
 		const dy = point.clientY - startY;
 
 		let { top, left, width, height } = startRect;
+		let snapX = null;
+		let snapY = null;
 
 		if (mode === "move") {
 			left = clamp(startRect.left + dx, 0, rect.width - startRect.width);
 			top = clamp(startRect.top + dy, 0, rect.height - startRect.height);
+
+			snapX = findSnap([left, left + width / 2, left + width], rect.width);
+			if (snapX) left = clamp(left + snapX.offset, 0, rect.width - width);
+
+			snapY = findSnap([top, top + height / 2, top + height], rect.height);
+			if (snapY) top = clamp(top + snapY.offset, 0, rect.height - height);
 		} else if (mode === "resize") {
 			width = clamp(startRect.width + dx, rect.width * 0.05, rect.width - startRect.left);
 			height = clamp(startRect.height + dy, rect.height * 0.05, rect.height - startRect.top);
+
+			snapX = findSnap([left + width], rect.width);
+			if (snapX) width = clamp(width + snapX.offset, rect.width * 0.05, rect.width - left);
+
+			snapY = findSnap([top + height], rect.height);
+			if (snapY) height = clamp(height + snapY.offset, rect.height * 0.05, rect.height - top);
 		}
+
+		updateSnapGuides(snapX, snapY);
 
 		$area.css({
 			left: `${(left / rect.width) * 100}%`,
@@ -418,6 +485,7 @@ function setupLiveAreaDragResize(areaKey) {
 		mode = null;
 		$(document).off("mousemove.prometbedit touchmove.prometbedit");
 		$(document).off("mouseup.prometbedit touchend.prometbedit");
+		updateSnapGuides(null, null);
 
 		const active = getActiveProfile();
 		if (!active) return;

@@ -130,12 +130,71 @@
 	align-items: flex-start;
 	padding: 2px;
 	box-sizing: border-box;
+	z-index: 1;
 }
 
 /* Live Textbox Layout Editor - editing happens directly on the real textbox */
 .prome-editor-area-label,
 .prome-editor-resize-handle {
 	display: none;
+}
+
+/* Alignment grid + snap guides, only shown while editing, to help center/align areas */
+.prome-textbox-editor-grid {
+	display: none;
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+	z-index: 0;
+}
+
+.prome-custom-textbox.prome-textbox-editing .prome-textbox-editor-grid {
+	display: block;
+}
+
+.prome-editor-grid-line {
+	position: absolute;
+}
+
+.prome-editor-grid-line-v {
+	top: 0;
+	bottom: 0;
+	border-left: 1px dashed rgba(255, 255, 255, 0.35);
+}
+
+.prome-editor-grid-line-h {
+	left: 0;
+	right: 0;
+	border-top: 1px dashed rgba(255, 255, 255, 0.35);
+}
+
+.prome-editor-grid-line-center {
+	border-color: rgba(255, 77, 109, 0.55);
+	border-style: solid;
+}
+
+.prome-editor-snap-guide {
+	position: absolute;
+	display: none;
+	background: #ff4d6d;
+	box-shadow: 0 0 4px rgba(255, 77, 109, 0.9);
+	z-index: 5;
+}
+
+.prome-editor-snap-guide-v {
+	top: 0;
+	bottom: 0;
+	width: 2px;
+}
+
+.prome-editor-snap-guide-h {
+	left: 0;
+	right: 0;
+	height: 2px;
+}
+
+.prome-editor-snap-guide.active {
+	display: block;
 }
 
 .prome-custom-textbox.prome-textbox-editing .prome-textbox-name-area,
