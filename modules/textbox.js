@@ -1,7 +1,9 @@
-import { extension_settings } from "../../../../extensions.js";
+import { extension_settings, getContext } from "../../../../extensions.js";
 import { saveSettingsDebounced } from "../../../../../script.js";
 import { extensionName } from "../constants.js";
 import { uploadTextboxImage } from "../utils.js";
+import { sendExpressionCall } from "../../../expressions/index.js";
+import { getBackgroundPath } from "../../../../backgrounds.js";
 
 /*
  * Custom Textboxes
@@ -34,6 +36,7 @@ const AREA_STYLE_DEFAULTS = {
 	shadow: false,
 	outlineColor: "#000000",
 	outlineWidth: 0,
+	textAlign: "left",
 };
 
 /** Whether the live, on-screen layout editor is currently active. */
@@ -168,6 +171,10 @@ function styleAreaBox($area, $text, area) {
 	textEl.style.color = area.fontColor;
 	textEl.style.textShadow = area.shadow ? "2px 2px 4px rgba(0, 0, 0, 0.8)" : "none";
 	textEl.style.webkitTextStroke = outlineWidth > 0 ? `${outlineWidth}px ${area.outlineColor || "#000000"}` : "0px transparent";
+	// The text lives in a flex item (see .prome-textbox-name-area/-dialogue-area), so it
+	// needs to be stretched to the full width of the area before text-align has any effect.
+	textEl.style.width = "100%";
+	textEl.style.textAlign = area.textAlign || AREA_STYLE_DEFAULTS.textAlign;
 }
 
 function applyScale() {
@@ -275,9 +282,51 @@ export function applyCustomTextboxMode() {
 
 let currentSequence = [];
 let currentIndex = -1;
+let currentSpriteFolderName = null;
 let isTyping = false;
 let typewriterTimer = null;
 let advanceTimer = null;
+
+/**
+ * Resolves the CSS `background-image` value for a classified background name, matching
+ * ST's own background URL scheme (see `public/scripts/backgrounds.js`): backgrounds that
+ * are locked/custom to the current chat use their path as-is, everything else is treated
+ * as a system background living under the `backgrounds/` folder.
+ * @param {string} name - The background name/path returned by the classifier
+ * @returns {string} - A `url("...")` CSS value
+ */
+function resolveBackgroundCssUrl(name) {
+	const context = getContext();
+	const chatBackgrounds = context.chatMetadata?.chat_backgrounds ?? [];
+	return chatBackgrounds.includes(name) ? `url("${encodeURI(name)}")` : `url("${getBackgroundPath(name)}")`;
+}
+
+/**
+ * Applies a classified segment's expression/background to the on-screen sprite and
+ * background, reusing SillyTavern's own expression system (so shakes, focus, VN
+ * layering, group sprites, etc. all stay in sync) and background URL scheme. Fields left
+ * null/unset on the segment are left untouched.
+ * @param {{expression: string|null, background: string|null}|undefined} segment
+ */
+async function applySegmentVisuals(segment) {
+	if (!segment) return;
+
+	if (segment.expression && currentSpriteFolderName) {
+		try {
+			await sendExpressionCall(currentSpriteFolderName, segment.expression, { force: true });
+		} catch (err) {
+			console.error(`[${extensionName}] Failed to apply segment expression:`, err);
+		}
+	}
+
+	if (segment.background) {
+		try {
+			$("#bg1").css("background-image", resolveBackgroundCssUrl(segment.background));
+		} catch (err) {
+			console.error(`[${extensionName}] Failed to apply segment background:`, err);
+		}
+	}
+}
 
 function clearTimers() {
 	if (typewriterTimer) {
@@ -301,6 +350,7 @@ function scheduleAutoAdvance() {
 function renderSegment(index) {
 	clearTimers();
 	const segment = currentSequence[index];
+	applySegmentVisuals(segment);
 	const text = segment?.text_segment ?? "";
 	const $text = $("#prome-textbox-dialogue-text");
 
@@ -358,14 +408,17 @@ function onTextboxClick() {
  * Does nothing if the custom textbox isn't enabled/configured.
  * @param {{text_segment: string, expression: string|null, background: string|null, cg: string|null}[]} sequence
  * @param {string} characterName - The name to show in the name area
+ * @param {string|null} [spriteFolderName=null] - The sprite folder name of the speaking
+ * character, used to apply each segment's classified expression as it plays back
  */
-export function playSequenceInTextbox(sequence, characterName) {
+export function playSequenceInTextbox(sequence, characterName, spriteFolderName = null) {
 	if (!settings().customTextboxEnabled) return;
 	if (!Array.isArray(sequence) || sequence.length === 0) return;
 	if (!$("#prome-custom-textbox").length || $("#prome-custom-textbox").hasClass("displayNone")) return;
 
 	currentSequence = sequence;
 	currentIndex = 0;
+	currentSpriteFolderName = spriteFolderName;
 
 	$("#prome-textbox-name-text").text(characterName ?? "");
 	renderSegment(0);
@@ -791,6 +844,7 @@ function refreshAreaStyleControls() {
 		$(`[data-area="${areaKey}"][data-field="shadow"]`).prop("checked", Boolean(area.shadow));
 		$(`[data-area="${areaKey}"][data-field="outlineColor"]`).attr("color", area.outlineColor);
 		$(`[data-area="${areaKey}"][data-field="outlineWidth"]`).val(area.outlineWidth);
+		$(`[data-area="${areaKey}"][data-field="textAlign"]`).val(area.textAlign);
 	}
 	$('[data-area="nameArea"][data-field="enabled"]').prop("checked", Boolean(active.nameArea.enabled));
 }

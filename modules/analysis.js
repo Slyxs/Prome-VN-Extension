@@ -6,6 +6,7 @@ import {
 	getAvailableExpressions,
 	getAvailableBackgrounds,
 	getAvailableCGs,
+	getSpriteFolderName,
 } from "../utils.js";
 import { playSequenceInTextbox } from "./textbox.js";
 
@@ -454,7 +455,7 @@ export async function analyzeMessageWithLLM(messageId) {
 		console.log({ sequence: finalSequence });
 		if (console.table) console.table(finalSequence);
 
-		playSequenceInTextbox(finalSequence, character.name);
+		playSequenceInTextbox(finalSequence, character.name, getSpriteFolderName(character));
 	} catch (err) {
 		console.error(`${LOG_TAG} LLM classification failed:`, LOG_STYLE_TAG, LOG_STYLE_ERROR, err);
 		toastr.error(`LLM classification failed: ${err.message}`, "Prome Analysis");
