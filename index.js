@@ -90,6 +90,12 @@ import {
 	setupScaleHTML,
 	setupScaleJQuery,
 } from "./modules/scale.js";
+import {
+	applyClassificationMethod,
+	analyzeMessageWithLLM,
+	setupAnalysisHTML,
+	setupAnalysisJQuery,
+} from "./modules/analysis.js";
 import { visualNovelUpdateLayers } from "../../expressions/index.js";
 
 async function loadSettings() {
@@ -207,6 +213,9 @@ async function loadSettings() {
 	/// Sprite Scale
 	setupScaleHTML();
 
+	// Classification Updates
+	setupAnalysisHTML();
+
 	// Traditional VN Mode Updates
 	$("#prome-sheld-last_mes").prop(
 		"checked",
@@ -252,6 +261,8 @@ async function loadSettings() {
 	applyAutoHideSprites();
 	/// Sprite Scale
 	applySpriteScale();
+	// Classification
+	applyClassificationMethod();
 }
 
 /* Prome Core Listeners */
@@ -331,6 +342,8 @@ jQuery(async () => {
 	setupSpriteShadowJQuery();
 	// Sprite Scale
 	setupScaleJQuery();
+	// Classification
+	setupAnalysisJQuery();
 
 	// User Sprite
 	$("#prome-user-sprite").on("click", onUserSprite_Click);
@@ -347,6 +360,9 @@ jQuery(async () => {
 
 	eventSource.on(event_types.MESSAGE_SWIPED, applyShakeDebounce);
 	eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, stopShake);
+	eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, (messageId) => {
+		analyzeMessageWithLLM(messageId);
+	});
 	eventSource.on(event_types.CHAT_CHANGED, async () => {
 		await applyZoomDebounce();
 		await applyDefocusDebounce();

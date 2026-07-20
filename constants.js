@@ -6,6 +6,22 @@ export const VN_MODES = {
 	VERTICAL: 2,
 };
 
+/**
+ * The classification methods available for choosing sprites/backgrounds/CGs.
+ */
+export const CLASSIFICATION_METHODS = {
+	/** Uses SillyTavern's built-in expression classification engine. */
+	ORIGINAL: "original",
+	/** Uses an LLM (via an OpenAI-compatible endpoint) to analyze the message. */
+	LLM: "llm",
+};
+
+/**
+ * The value of `extension_settings.expressions.api` that represents "no classifier selected".
+ * Used to suppress ST's built-in classification when LLM-Based classification is active.
+ */
+export const EXPRESSION_API_NONE = 99;
+
 const defaultTintValues = {
 	name: "Jarilo Midnight",
 	shared: false,
@@ -115,4 +131,12 @@ export const defaultSettings = {
 	maxViewableCharacters: 5,
 	maxSpriteScale: 1,
 	scaleSprites: false,
+
+	// Classification
+	classificationMethod: CLASSIFICATION_METHODS.ORIGINAL,
+	previousExpressionApi: null,
+	llmAnalysisUrl: "",
+	llmAnalysisApiKey: "",
+	llmAnalysisModel: "",
+	llmAnalysisAvailableModels: [],
 };
