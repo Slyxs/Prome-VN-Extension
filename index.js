@@ -97,6 +97,11 @@ import {
 	setupAnalysisHTML,
 	setupAnalysisJQuery,
 } from "./modules/analysis.js";
+import {
+	applyCustomTextboxMode,
+	setupCustomTextboxHTML,
+	setupCustomTextboxJQuery,
+} from "./modules/textbox.js";
 import { visualNovelUpdateLayers } from "../../expressions/index.js";
 
 async function loadSettings() {
@@ -217,6 +222,9 @@ async function loadSettings() {
 	// Classification Updates
 	setupAnalysisHTML();
 
+	// Custom Textbox Updates
+	setupCustomTextboxHTML();
+
 	// Traditional VN Mode Updates
 	$("#prome-sheld-last_mes").prop(
 		"checked",
@@ -264,6 +272,8 @@ async function loadSettings() {
 	applySpriteScale();
 	// Classification
 	applyClassificationMethod();
+	// Custom Textbox
+	applyCustomTextboxMode();
 }
 
 /* Prome Core Listeners */
@@ -345,6 +355,8 @@ jQuery(async () => {
 	setupScaleJQuery();
 	// Classification
 	setupAnalysisJQuery();
+	// Custom Textbox
+	setupCustomTextboxJQuery();
 
 	// User Sprite
 	$("#prome-user-sprite").on("click", onUserSprite_Click);

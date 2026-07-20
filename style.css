@@ -3,6 +3,9 @@
 	/* Prome Letterbox */
 	--prome-letterbox-zindex: 29;
 
+	/* Prome Custom Textbox (one above the sprite's z-index of 2) */
+	--prome-textbox-zindex: 3;
+
 	/* Prome Focus/Defocus Mode */
 	--prome-focus-filter-transition: 0.4s ease-in;
 	--prome-focus-scale: 1.05;
@@ -75,6 +78,53 @@
 
 .prome_details_padding {
 	padding: 5px 5px;
+}
+
+/* Prome Custom Textbox */
+.prome-custom-textbox {
+	position: fixed;
+	bottom: 2%;
+	left: 10%;
+	width: 80%;
+	z-index: var(--prome-textbox-zindex);
+	user-select: none;
+}
+
+.prome-custom-textbox.displayNone {
+	display: none !important;
+}
+
+.prome-textbox-bg {
+	display: block;
+	width: 100%;
+	height: auto;
+	pointer-events: none;
+}
+
+.prome-textbox-drag-handle {
+	position: absolute;
+	top: -22px;
+	left: 0;
+	cursor: grab;
+	background: rgba(0, 0, 0, 0.5);
+	color: #fff;
+	padding: 4px 8px;
+	border-radius: 4px 4px 0 0;
+	font-size: 0.8em;
+	z-index: 1;
+}
+
+.prome-textbox-drag-handle:active {
+	cursor: grabbing;
+}
+
+.prome-textbox-name-area,
+.prome-textbox-dialogue-area {
+	position: absolute;
+	overflow: hidden;
+	white-space: pre-wrap;
+	word-break: break-word;
+	cursor: pointer;
 }
 
 /* Prome Letterbox Settings */

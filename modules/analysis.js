@@ -7,6 +7,7 @@ import {
 	getAvailableBackgrounds,
 	getAvailableCGs,
 } from "../utils.js";
+import { playSequenceInTextbox } from "./textbox.js";
 
 /* Console Log Styling */
 const LOG_TAG = `%c[Prome Analysis]%c`;
@@ -436,6 +437,8 @@ export async function analyzeMessageWithLLM(messageId) {
 		);
 		console.log({ sequence: finalSequence });
 		if (console.table) console.table(finalSequence);
+
+		playSequenceInTextbox(finalSequence, character.name);
 	} catch (err) {
 		console.error(`${LOG_TAG} LLM classification failed:`, LOG_STYLE_TAG, LOG_STYLE_ERROR, err);
 		toastr.error(`LLM classification failed: ${err.message}`, "Prome Analysis");

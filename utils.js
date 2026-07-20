@@ -1,6 +1,12 @@
 import { getContext, extension_settings } from "../../../extensions.js";
 import { getRequestHeaders } from "../../../../script.js";
-import { extensionName, VN_MODES, PROME_CG_FOLDER, PROME_TEXTBOX_FOLDER } from "./constants.js";
+import {
+	extensionName,
+	VN_MODES,
+	PROME_CG_FOLDER,
+	PROME_TEXTBOX_FOLDER,
+	PROME_TEXTBOX_CONFIG_EXTENSION,
+} from "./constants.js";
 
 /**
  * Returns the last character chat message
@@ -253,8 +259,7 @@ export async function getAvailableCGs() {
 
 /**
  * Ensures the Prome CG and textbox asset folders exist on the server, creating them
- * if necessary. The textbox folder isn't used anywhere yet, it's just kept ready for
- * a future update.
+ * if necessary.
  * @returns {Promise<void>}
  */
 export async function ensurePromeAssetFolders() {
@@ -262,4 +267,46 @@ export async function ensurePromeAssetFolders() {
 		listUserImageFolder(PROME_CG_FOLDER),
 		listUserImageFolder(PROME_TEXTBOX_FOLDER),
 	]);
+}
+
+/**
+ * Fetches and parses a textbox's JSON configuration file directly from its public URL.
+ * @param {string} configUrl - The public URL of the configuration file
+ * @returns {Promise<object|null>} - The parsed configuration, or null if it couldn't be loaded
+ */
+export async function fetchTextboxConfig(configUrl) {
+	try {
+		const response = await fetch(configUrl);
+		if (!response.ok) return null;
+		return await response.json();
+	} catch (err) {
+		console.error(`[${extensionName}] Error fetching textbox config "${configUrl}": ${err}`);
+		return null;
+	}
+}
+
+/**
+ * Lists the available custom textboxes. A textbox is a pair of files sharing the same
+ * base name inside the Prome textbox folder: an image (the frame) and a JSON config
+ * (the safe areas for the name/dialogue text). Only images with a matching config file
+ * are considered valid textboxes.
+ * @returns {Promise<{name: string, imageUrl: string, config: object}[]>} - The available textboxes
+ */
+export async function getAvailableTextboxes() {
+	const files = await listUserImageFolder(PROME_TEXTBOX_FOLDER);
+	const textboxes = [];
+
+	for (const file of files) {
+		const baseName = file.replace(/\.[^/.]+$/, "");
+		const imageUrl = `/user/images/${PROME_TEXTBOX_FOLDER}/${encodeURIComponent(file)}`;
+		const configUrl = `/user/images/${PROME_TEXTBOX_FOLDER}/${encodeURIComponent(baseName)}${PROME_TEXTBOX_CONFIG_EXTENSION}`;
+		const config = await fetchTextboxConfig(configUrl);
+
+		// A textbox is only valid if it has a matching JSON configuration file.
+		if (!config) continue;
+
+		textboxes.push({ name: baseName, imageUrl, config });
+	}
+
+	return textboxes;
 }

@@ -575,10 +575,10 @@
                             class="prome_vn_block flex-container flexFlowColumn prome_details_padding">
                             <h4 data-i18n="LLM Analysis Settings">LLM Analysis Settings</h4>
                             <small
-                                data-i18n="Connect to an OpenAI-compatible endpoint to analyze messages and choose expressions, backgrounds and CGs. Segment playback is not implemented yet, results are currently only logged to the browser console.">
+                                data-i18n="Connect to an OpenAI-compatible endpoint to analyze messages and choose expressions, backgrounds and CGs. Enable a Custom Textbox below to play the segments back, or check the browser console for the raw results.">
                                 Connect to an OpenAI-compatible endpoint to analyze messages and choose expressions,
-                                backgrounds and CGs. Segment playback is not implemented yet &mdash; results are
-                                currently only logged to the browser console.
+                                backgrounds and CGs. Enable a Custom Textbox below to play the segments back, or
+                                check the browser console for the raw results.
                             </small>
 
                             <label for="prome-analysis-url" data-i18n="API URL">API URL</label>
@@ -626,12 +626,142 @@
                             <hr />
 
                             <small
-                                data-i18n="CG images are picked up automatically from the user/images/prome-cgs folder (created automatically). Textbox assets will use user/images/prome-textboxes in a future update.">
+                                data-i18n="CG images are picked up automatically from the user/images/prome-cgs folder (created automatically).">
                                 CGs are picked up automatically from the <b>user/images/prome-cgs</b> folder (created
-                                automatically on connect). A <b>user/images/prome-textboxes</b> folder is also reserved
-                                for custom textbox assets in a future update.
+                                automatically on connect).
                             </small>
                         </div>
+                    </div>
+                </details>
+
+                <!-- Custom Textbox Configuration -->
+                <details>
+                    <summary data-i18n="Custom Textboxes">
+                        Custom Textboxes
+                    </summary>
+
+                    <div class="prome_vn_block flex-container flexFlowColumn prome_details_padding">
+                        <label class="checkbox_label" for="prome-textbox-enable"
+                            title="Show a draggable, Ren'Py-style textbox that plays classified message segments one by one."
+                            data-i18n="[title]Show a draggable, Ren'Py-style textbox that plays classified message segments one by one.">
+                            <input id="prome-textbox-enable" type="checkbox" />
+                            <span data-i18n="Enable Custom Textbox">Enable Custom Textbox</span>
+                        </label>
+
+                        <div class="prome_vn_block flex-container flexFlowColumn">
+                            <label for="prome-textbox-select" data-i18n="Active Textbox">Active Textbox</label>
+                            <small
+                                data-i18n="Place a textbox image and its matching JSON config (same file name) in the user/images/prome-textboxes folder, then refresh this list.">
+                                Place a textbox image and its matching JSON config (same file name) in the
+                                <b>user/images/prome-textboxes</b> folder, then refresh this list.
+                            </small>
+                            <div class="flex-container flexFlowRow alignitemsflexend">
+                                <div class="prome_vn_block flex-container flexFlowColumn flex1">
+                                    <select id="prome-textbox-select"></select>
+                                </div>
+                                <div id="prome-textbox-refresh" class="menu_button menu_button_icon"
+                                    title="Refresh the list of available textboxes"
+                                    data-i18n="[title]Refresh the list of available textboxes">
+                                    <i class="fa-solid fa-arrows-rotate"></i>
+                                    <span data-i18n="Refresh">Refresh</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <hr />
+
+                        <label class="checkbox_label" for="prome-textbox-auto-advance"
+                            title="Automatically move to the next segment after a delay, instead of waiting for a click."
+                            data-i18n="[title]Automatically move to the next segment after a delay, instead of waiting for a click.">
+                            <input id="prome-textbox-auto-advance" type="checkbox" />
+                            <span data-i18n="Auto-Advance Segments">Auto-Advance Segments</span>
+                        </label>
+                        <div class="prome_vn_block flex-container flexFlowColumn">
+                            <label for="prome-textbox-auto-advance-delay" data-i18n="Auto-Advance Delay (ms)">
+                                Auto-Advance Delay (ms)
+                            </label>
+                            <small
+                                data-i18n="How long to wait, in milliseconds, after a segment finishes displaying before automatically moving to the next one.">
+                                How long to wait, in milliseconds, after a segment finishes displaying before
+                                automatically moving to the next one.
+                            </small>
+                            <input id="prome-textbox-auto-advance-delay" type="number" class="text_pole" min="100"
+                                max="60000" step="100" />
+                        </div>
+
+                        <hr />
+
+                        <label class="checkbox_label" for="prome-textbox-streaming"
+                            title="Reveal dialogue text one character at a time instead of all at once."
+                            data-i18n="[title]Reveal dialogue text one character at a time instead of all at once.">
+                            <input id="prome-textbox-streaming" type="checkbox" />
+                            <span data-i18n="Enable Text Streaming">Enable Text Streaming</span>
+                        </label>
+                        <div class="prome_vn_block flex-container flexFlowColumn">
+                            <label for="prome-textbox-streaming-speed" data-i18n="Streaming Speed (characters/sec)">
+                                Streaming Speed (characters/sec)
+                            </label>
+                            <small data-i18n="How many characters are revealed per second while streaming text.">
+                                How many characters are revealed per second while streaming text.
+                            </small>
+                            <input id="prome-textbox-streaming-speed" type="number" class="text_pole" min="1"
+                                max="200" step="1" />
+                        </div>
+
+                        <hr />
+
+                        <div class="flex-container flexFlowRow">
+                            <div id="prome-textbox-reset-position" class="menu_button menu_button_icon"
+                                title="Reset the textbox to its default position"
+                                data-i18n="[title]Reset the textbox to its default position">
+                                <i class="fa-solid fa-arrows-to-dot"></i>
+                                <span data-i18n="Reset Position">Reset Position</span>
+                            </div>
+                            <div id="prome-textbox-preview" class="menu_button menu_button_icon"
+                                title="Preview the active textbox with sample text"
+                                data-i18n="[title]Preview the active textbox with sample text">
+                                <i class="fa-solid fa-eye"></i>
+                                <span data-i18n="Preview">Preview</span>
+                            </div>
+                        </div>
+                        <small data-i18n="Drag the textbox's handle (top-left grip) on-screen to reposition it.">
+                            Drag the textbox's handle (top-left grip) on-screen to reposition it. Click the textbox
+                            (or wait for auto-advance) to move to the next segment.
+                        </small>
+
+                        <hr />
+
+                        <small data-i18n="Example textbox configuration file (name_area/dialogue_area define the safe areas for the speaker name and dialogue text):">
+                            Example textbox configuration file (<b>name_area</b>/<b>dialogue_area</b> define the safe
+                            areas for the speaker name and dialogue text):
+                        </small>
+                        <pre><code>{
+  "fonts": [
+    { "font_family": "TitleFont", "font_file": "FancyName.ttf" },
+    { "font_family": "ReadabilityFont", "font_file": "CleanDialogue.otf" }
+  ],
+  "name_area": {
+    "top": "5%", "left": "8%", "width": "24%", "height": "10%",
+    "align": "left", "vertical_align": "middle",
+    "styling": {
+      "font_family": "TitleFont", "font_size": "26px", "font_color": "#ffcc00",
+      "outline_color": "#000000", "outline_thickness": "2px", "shadow": true
+    }
+  },
+  "dialogue_area": {
+    "top": "20%", "left": "10%", "width": "80%", "height": "70%",
+    "align": "left", "vertical_align": "top", "line_height": "1.4",
+    "styling": {
+      "font_family": "ReadabilityFont", "font_size": "18px", "font_color": "#ffffff",
+      "outline_color": "transparent", "outline_thickness": "0px", "shadow": false
+    }
+  }
+}</code></pre>
+                        <small data-i18n="Save the image and its config with the same file name (e.g. my_textbox.png + my_textbox.json) inside user/images/prome-textboxes.">
+                            Save the image and its config with the same file name (e.g.
+                            <b>my_textbox.png</b> + <b>my_textbox.json</b>) inside
+                            <b>user/images/prome-textboxes</b>.
+                        </small>
                     </div>
                 </details>
 
