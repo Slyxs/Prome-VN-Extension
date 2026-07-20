@@ -269,45 +269,36 @@ export async function ensurePromeAssetFolders() {
 }
 
 /**
- * Reads a File object as a base64-encoded string (without the `data:...;base64,` prefix).
- * @param {File} file - The file to read
- * @returns {Promise<string>} - The base64-encoded file contents
+ * Uploads an image file to the Prome textbox folder (`user/images/prome-textboxes`) using
+ * SillyTavern's generic image upload endpoint.
+ * @param {File} file - The image file to upload
+ * @returns {Promise<string>} - The client-relative URL of the uploaded image (e.g. `/user/images/prome-textboxes/textbox_123.png`)
  */
-function fileToBase64(file) {
-	return new Promise((resolve, reject) => {
+export async function uploadTextboxImage(file) {
+	const format = (file.type.split("/")[1] || file.name.split(".").pop() || "png").toLowerCase();
+
+	const base64 = await new Promise((resolve, reject) => {
 		const reader = new FileReader();
 		reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "");
 		reader.onerror = () => reject(reader.error);
 		reader.readAsDataURL(file);
 	});
-}
 
-/**
- * Uploads an image file to use as a custom textbox frame, saving it into the dedicated
- * Prome textbox folder (`user/images/prome-textboxes`).
- * @param {File} file - The image file to upload
- * @returns {Promise<string|null>} - The public URL of the uploaded image, or null on failure
- */
-export async function uploadTextboxImage(file) {
-	try {
-		const format = (file.name.split(".").pop() || "png").toLowerCase();
-		const base64 = await fileToBase64(file);
-		const filename = `textbox_${Date.now()}`;
+	const response = await fetch("/api/images/upload", {
+		method: "POST",
+		headers: getRequestHeaders(),
+		body: JSON.stringify({
+			image: base64,
+			format,
+			filename: `textbox_${Date.now()}.${format}`,
+			ch_name: PROME_TEXTBOX_FOLDER,
+		}),
+	});
 
-		const response = await fetch("/api/images/upload", {
-			method: "POST",
-			headers: getRequestHeaders(),
-			body: JSON.stringify({ image: base64, format, filename, ch_name: PROME_TEXTBOX_FOLDER }),
-		});
-
-		if (!response.ok) {
-			throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-		}
-
-		const data = await response.json();
-		return data?.path ?? null;
-	} catch (err) {
-		console.error(`[${extensionName}] Error uploading textbox image: ${err}`);
-		return null;
+	if (!response.ok) {
+		throw new Error(`HTTP ${response.status}: ${response.statusText}`);
 	}
+
+	const data = await response.json();
+	return data.path;
 }

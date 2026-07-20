@@ -29,10 +29,8 @@ export const EXPRESSION_API_NONE = 99;
 export const PROME_CG_FOLDER = "prome-cgs";
 
 /**
- * The folder name (relative to the user's `user/images` directory) where uploaded custom
- * textbox frame images are stored. Textbox layout (name/dialogue area positions, sizes
- * and styling) is stored directly in the extension settings (`textboxProfiles`), not as
- * a separate file.
+ * The folder name (relative to the user's `user/images` directory) where custom textbox
+ * images uploaded through the Textbox Editor are stored.
  */
 export const PROME_TEXTBOX_FOLDER = "prome-textboxes";
 
@@ -160,8 +158,8 @@ export const defaultSettings = {
 	customTextboxEnabled: false,
 	textboxProfiles: [],
 	activeTextboxId: null,
-	textboxPosition: null,
 	textboxScale: 100,
+	textboxPosition: null,
 	textboxAutoAdvance: false,
 	textboxAutoAdvanceDelay: 3000,
 	textboxTextStreaming: true,

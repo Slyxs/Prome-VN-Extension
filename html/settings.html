@@ -649,113 +649,58 @@
                         </label>
 
                         <div class="prome_vn_block flex-container flexFlowColumn">
-                            <label for="prome-textbox-select" data-i18n="Textbox Image">Textbox Image</label>
-                            <small
-                                data-i18n="Upload an image to use as your textbox, then use the layout editor below to set where the name and dialogue text should appear.">
-                                Upload an image to use as your textbox, then use the layout editor below to set
-                                where the name and dialogue text should appear.
+                            <label for="prome-textbox-profile-select" data-i18n="Your Textboxes">Your Textboxes</label>
+                            <small data-i18n="Upload an image for your textbox frame, then use the editor to drag and resize the name/dialogue areas directly on top of it.">
+                                Upload an image for your textbox frame, then use the editor to drag and resize the
+                                name/dialogue areas directly on top of it.
                             </small>
                             <div class="flex-container flexFlowRow alignitemsflexend">
                                 <div class="prome_vn_block flex-container flexFlowColumn flex1">
-                                    <select id="prome-textbox-select"></select>
+                                    <select id="prome-textbox-profile-select"></select>
                                 </div>
-                                <div id="prome-textbox-upload" class="menu_button menu_button_icon"
+                                <div id="prome-textbox-add" class="menu_button menu_button_icon"
                                     title="Upload a new textbox image" data-i18n="[title]Upload a new textbox image">
                                     <i class="fa-solid fa-upload"></i>
-                                    <span data-i18n="Upload">Upload</span>
+                                    <span data-i18n="Add">Add</span>
+                                </div>
+                                <input id="prome-textbox-file-input" type="file" accept="image/*"
+                                    style="display: none;" />
+                            </div>
+
+                            <div class="flex-container flexFlowRow alignitemsflexend">
+                                <div class="prome_vn_block flex-container flexFlowColumn flex1">
+                                    <label for="prome-textbox-name-input" data-i18n="Textbox Name">Textbox Name</label>
+                                    <input id="prome-textbox-name-input" type="text" class="text_pole"
+                                        placeholder="Textbox name" data-i18n="[placeholder]Textbox name" />
+                                </div>
+                                <div id="prome-textbox-edit" class="menu_button menu_button_icon"
+                                    title="Open the visual layout editor" data-i18n="[title]Open the visual layout editor">
+                                    <i class="fa-solid fa-pen-to-square"></i>
+                                    <span data-i18n="Edit Layout">Edit Layout</span>
                                 </div>
                                 <div id="prome-textbox-delete" class="menu_button menu_button_icon"
-                                    title="Delete the selected textbox"
-                                    data-i18n="[title]Delete the selected textbox">
-                                    <i class="fa-solid fa-trash"></i>
+                                    title="Delete this textbox" data-i18n="[title]Delete this textbox">
+                                    <i class="fa-solid fa-trash-can"></i>
                                     <span data-i18n="Delete">Delete</span>
                                 </div>
                             </div>
-                            <input id="prome-textbox-upload-input" type="file" accept="image/*"
-                                style="display: none;" />
-                        </div>
-
-                        <div class="prome_vn_block flex-container flexFlowColumn">
-                            <label for="prome-textbox-name-input" data-i18n="Textbox Name">Textbox Name</label>
-                            <input id="prome-textbox-name-input" type="text" class="text_pole"
-                                placeholder="My Textbox" data-i18n="[placeholder]My Textbox" autocomplete="off" />
                         </div>
 
                         <hr />
 
-                        <div id="prome-textbox-editor"
-                            class="prome_vn_block flex-container flexFlowColumn displayNone">
-                            <label data-i18n="Layout Editor">Layout Editor</label>
-                            <small
-                                data-i18n="Drag a box to move it, or drag its bottom-right handle to resize it. This sets where the name and dialogue text will appear, and their limits.">
-                                Drag a box to move it, or drag its bottom-right handle to resize it. This sets
-                                where the name and dialogue text will appear, and their limits.
+                        <div class="prome_vn_block flex-container flexFlowColumn">
+                            <label for="prome-textbox-scale" class="title_restorable">
+                                <span data-i18n="Textbox Scale">Textbox Scale</span>
+                            </label>
+                            <small data-i18n="Controls the overall on-screen size of the textbox, independent of the layout you set in the editor.">
+                                Controls the overall on-screen size of the textbox, independent of the layout you set
+                                in the editor.
                             </small>
-                            <div id="prome-textbox-editor-stage" class="prome-textbox-editor-stage">
-                                <img id="prome-textbox-editor-image" class="prome-textbox-editor-image" alt="" />
-                                <div id="prome-textbox-editor-name-area"
-                                    class="prome-textbox-editor-area prome-textbox-editor-name">
-                                    <span class="prome-editor-area-label" data-i18n="Name">Name</span>
-                                    <div class="prome-editor-resize-handle"></div>
-                                </div>
-                                <div id="prome-textbox-editor-dialogue-area"
-                                    class="prome-textbox-editor-area prome-textbox-editor-dialogue">
-                                    <span class="prome-editor-area-label" data-i18n="Dialogue">Dialogue</span>
-                                    <div class="prome-editor-resize-handle"></div>
-                                </div>
-                            </div>
-
                             <div class="flex-container flexFlowRow">
-                                <div class="prome_vn_block flex-container flexFlowColumn flex1">
-                                    <label class="checkbox_label" for="prome-textbox-name-enabled"
-                                        data-i18n="Show Name">
-                                        <input id="prome-textbox-name-enabled" type="checkbox" />
-                                        <span data-i18n="Show Name">Show Name</span>
-                                    </label>
-                                    <label for="prome-textbox-name-fontsize" data-i18n="Name Font Size (px)">
-                                        Name Font Size (px)
-                                    </label>
-                                    <input id="prome-textbox-name-fontsize" type="number" class="text_pole" min="8"
-                                        max="72" step="1" />
-                                    <label for="prome-textbox-name-color" data-i18n="Name Color">Name Color</label>
-                                    <input id="prome-textbox-name-color" type="color" />
-                                    <label class="checkbox_label" for="prome-textbox-name-shadow"
-                                        data-i18n="Text Shadow">
-                                        <input id="prome-textbox-name-shadow" type="checkbox" />
-                                        <span data-i18n="Text Shadow">Text Shadow</span>
-                                    </label>
-                                </div>
-                                <div class="prome_vn_block flex-container flexFlowColumn flex1">
-                                    <label for="prome-textbox-dialogue-fontsize"
-                                        data-i18n="Dialogue Font Size (px)">
-                                        Dialogue Font Size (px)
-                                    </label>
-                                    <input id="prome-textbox-dialogue-fontsize" type="number" class="text_pole"
-                                        min="8" max="72" step="1" />
-                                    <label for="prome-textbox-dialogue-color" data-i18n="Dialogue Color">
-                                        Dialogue Color
-                                    </label>
-                                    <input id="prome-textbox-dialogue-color" type="color" />
-                                    <label class="checkbox_label" for="prome-textbox-dialogue-shadow"
-                                        data-i18n="Text Shadow">
-                                        <input id="prome-textbox-dialogue-shadow" type="checkbox" />
-                                        <span data-i18n="Text Shadow">Text Shadow</span>
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
-
-                        <hr />
-
-                        <div class="prome_vn_block flex-container flexFlowColumn">
-                            <label for="prome-textbox-scale" data-i18n="Textbox Scale">Textbox Scale</label>
-                            <small data-i18n="Controls how large the textbox appears on screen.">
-                                Controls how large the textbox appears on screen.
-                            </small>
-                            <div class="flex-container flexFlowRow alignitemscenter">
-                                <input id="prome-textbox-scale" type="range" min="50" max="200" step="5"
-                                    class="flex1" />
-                                <span id="prome-textbox-scale-value">100%</span>
+                                <input class="neo-range-slider" id="prome-textbox-scale" type="range" min="50"
+                                    max="200" step="1" />
+                                <input class="neo-range-input" id="prome-textbox-scale-counter" type="number" min="50"
+                                    max="200" step="1" data-for="prome-textbox-scale" />
                             </div>
                         </div>
 
