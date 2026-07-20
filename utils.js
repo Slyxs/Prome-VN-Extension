@@ -5,7 +5,6 @@ import {
 	VN_MODES,
 	PROME_CG_FOLDER,
 	PROME_TEXTBOX_FOLDER,
-	PROME_TEXTBOX_CONFIG_EXTENSION,
 } from "./constants.js";
 
 /**
@@ -270,43 +269,45 @@ export async function ensurePromeAssetFolders() {
 }
 
 /**
- * Fetches and parses a textbox's JSON configuration file directly from its public URL.
- * @param {string} configUrl - The public URL of the configuration file
- * @returns {Promise<object|null>} - The parsed configuration, or null if it couldn't be loaded
+ * Reads a File object as a base64-encoded string (without the `data:...;base64,` prefix).
+ * @param {File} file - The file to read
+ * @returns {Promise<string>} - The base64-encoded file contents
  */
-export async function fetchTextboxConfig(configUrl) {
-	try {
-		const response = await fetch(configUrl);
-		if (!response.ok) return null;
-		return await response.json();
-	} catch (err) {
-		console.error(`[${extensionName}] Error fetching textbox config "${configUrl}": ${err}`);
-		return null;
-	}
+function fileToBase64(file) {
+	return new Promise((resolve, reject) => {
+		const reader = new FileReader();
+		reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "");
+		reader.onerror = () => reject(reader.error);
+		reader.readAsDataURL(file);
+	});
 }
 
 /**
- * Lists the available custom textboxes. A textbox is a pair of files sharing the same
- * base name inside the Prome textbox folder: an image (the frame) and a JSON config
- * (the safe areas for the name/dialogue text). Only images with a matching config file
- * are considered valid textboxes.
- * @returns {Promise<{name: string, imageUrl: string, config: object}[]>} - The available textboxes
+ * Uploads an image file to use as a custom textbox frame, saving it into the dedicated
+ * Prome textbox folder (`user/images/prome-textboxes`).
+ * @param {File} file - The image file to upload
+ * @returns {Promise<string|null>} - The public URL of the uploaded image, or null on failure
  */
-export async function getAvailableTextboxes() {
-	const files = await listUserImageFolder(PROME_TEXTBOX_FOLDER);
-	const textboxes = [];
+export async function uploadTextboxImage(file) {
+	try {
+		const format = (file.name.split(".").pop() || "png").toLowerCase();
+		const base64 = await fileToBase64(file);
+		const filename = `textbox_${Date.now()}`;
 
-	for (const file of files) {
-		const baseName = file.replace(/\.[^/.]+$/, "");
-		const imageUrl = `/user/images/${PROME_TEXTBOX_FOLDER}/${encodeURIComponent(file)}`;
-		const configUrl = `/user/images/${PROME_TEXTBOX_FOLDER}/${encodeURIComponent(baseName)}${PROME_TEXTBOX_CONFIG_EXTENSION}`;
-		const config = await fetchTextboxConfig(configUrl);
+		const response = await fetch("/api/images/upload", {
+			method: "POST",
+			headers: getRequestHeaders(),
+			body: JSON.stringify({ image: base64, format, filename, ch_name: PROME_TEXTBOX_FOLDER }),
+		});
 
-		// A textbox is only valid if it has a matching JSON configuration file.
-		if (!config) continue;
+		if (!response.ok) {
+			throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+		}
 
-		textboxes.push({ name: baseName, imageUrl, config });
+		const data = await response.json();
+		return data?.path ?? null;
+	} catch (err) {
+		console.error(`[${extensionName}] Error uploading textbox image: ${err}`);
+		return null;
 	}
-
-	return textboxes;
 }

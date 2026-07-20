@@ -29,18 +29,12 @@ export const EXPRESSION_API_NONE = 99;
 export const PROME_CG_FOLDER = "prome-cgs";
 
 /**
- * The folder name (relative to the user's `user/images` directory) where custom textbox
- * assets are stored. A textbox is a pair of files sharing the same base name: an image
- * (the textbox frame) and a JSON configuration file describing the safe areas for the
- * speaker name and dialogue text.
+ * The folder name (relative to the user's `user/images` directory) where uploaded custom
+ * textbox frame images are stored. Textbox layout (name/dialogue area positions, sizes
+ * and styling) is stored directly in the extension settings (`textboxProfiles`), not as
+ * a separate file.
  */
 export const PROME_TEXTBOX_FOLDER = "prome-textboxes";
-
-/**
- * The file extension used for a textbox's JSON configuration file. It must share the
- * same base name as its paired image (e.g. `my_textbox.png` + `my_textbox.json`).
- */
-export const PROME_TEXTBOX_CONFIG_EXTENSION = ".json";
 
 const defaultTintValues = {
 	name: "Jarilo Midnight",
@@ -164,8 +158,10 @@ export const defaultSettings = {
 
 	// Custom Textboxes
 	customTextboxEnabled: false,
-	activeTextbox: "",
+	textboxProfiles: [],
+	activeTextboxId: null,
 	textboxPosition: null,
+	textboxScale: 100,
 	textboxAutoAdvance: false,
 	textboxAutoAdvanceDelay: 3000,
 	textboxTextStreaming: true,

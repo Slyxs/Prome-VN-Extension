@@ -1,42 +1,58 @@
 import { extension_settings } from "../../../../extensions.js";
 import { saveSettingsDebounced } from "../../../../../script.js";
-import { extensionName, PROME_TEXTBOX_FOLDER } from "../constants.js";
-import { getAvailableTextboxes } from "../utils.js";
+import { extensionName } from "../constants.js";
+import { uploadTextboxImage } from "../utils.js";
 
 /*
  * Custom Textboxes
  * -----------------
  * Renders a Ren'Py-style textbox that plays back a classified message one segment at a
- * time. A textbox asset is a pair of files living in `user/images/prome-textboxes`
- * sharing the same base name: an image (the frame) and a JSON configuration file
- * describing the "safe areas" for the speaker name and dialogue text. Example config:
- *
- * {
- *   "fonts": [
- *     { "font_family": "TitleFont", "font_file": "FancyName.ttf" },
- *     { "font_family": "ReadabilityFont", "font_file": "CleanDialogue.otf" }
- *   ],
- *   "name_area": {
- *     "top": "5%", "left": "8%", "width": "24%", "height": "10%",
- *     "align": "left", "vertical_align": "middle",
- *     "styling": {
- *       "font_family": "TitleFont", "font_size": "26px", "font_color": "#ffcc00",
- *       "outline_color": "#000000", "outline_thickness": "2px", "shadow": true
- *     }
- *   },
- *   "dialogue_area": {
- *     "top": "20%", "left": "10%", "width": "80%", "height": "70%",
- *     "align": "left", "vertical_align": "top", "line_height": "1.4",
- *     "styling": {
- *       "font_family": "ReadabilityFont", "font_size": "18px", "font_color": "#ffffff",
- *       "outline_color": "transparent", "outline_thickness": "0px", "shadow": false
- *     }
- *   }
- * }
+ * time. Textboxes are configured entirely in the UI: upload a frame image, then use the
+ * on-screen layout editor to drag/resize where the speaker name and dialogue text should
+ * appear. Everything (image URL + area positions/sizes/styling) is stored as a "profile"
+ * in the extension settings (`textboxProfiles`) - no manual file/JSON editing required.
  */
 
 function settings() {
 	return extension_settings[extensionName];
+}
+
+function clamp(value, min, max) {
+	return Math.min(Math.max(value, min), max);
+}
+
+function round1(value) {
+	return Math.round(value * 10) / 10;
+}
+
+function getProfiles() {
+	if (!Array.isArray(settings().textboxProfiles)) {
+		settings().textboxProfiles = [];
+	}
+	return settings().textboxProfiles;
+}
+
+function getActiveProfile() {
+	return getProfiles().find((profile) => profile.id === settings().activeTextboxId) ?? null;
+}
+
+function createDefaultProfile(fileName, imageUrl) {
+	const baseName = fileName.replace(/\.[^/.]+$/, "").trim() || "Textbox";
+
+	return {
+		id: `tb_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+		name: baseName,
+		imageUrl,
+		nameArea: {
+			enabled: true,
+			top: 6, left: 6, width: 30, height: 12,
+			fontSize: 22, fontColor: "#ffcc00", shadow: true,
+		},
+		dialogueArea: {
+			top: 22, left: 6, width: 88, height: 68,
+			fontSize: 18, fontColor: "#ffffff", shadow: false,
+		},
+	};
 }
 
 /* ---------------------------------------------------------------------- */
@@ -62,55 +78,42 @@ function injectCustomTextboxElement() {
 	$("body").append(html);
 }
 
-function loadCustomFonts(fonts) {
-	$("#prome-textbox-fonts").remove();
-
-	if (!Array.isArray(fonts) || fonts.length === 0) return;
-
-	const rules = fonts
-		.map((font) => {
-			if (!font?.font_family || !font?.font_file) return "";
-			const url = `/user/images/${PROME_TEXTBOX_FOLDER}/${encodeURIComponent(font.font_file)}`;
-			return `@font-face { font-family: "${font.font_family}"; src: url("${url}"); }`;
-		})
-		.filter(Boolean)
-		.join("\n");
-
-	if (rules) {
-		$("<style>").attr("id", "prome-textbox-fonts").text(rules).appendTo("head");
+/**
+ * Applies an area's position/size/font styling to the live on-screen textbox.
+ * @param {JQuery} $area - The area container element
+ * @param {JQuery} $text - The text element inside the area
+ * @param {object} area - The area config (top/left/width/height/fontSize/fontColor/shadow)
+ * @param {{isNameArea?: boolean}} [opts] - Options
+ */
+function applyLiveAreaStyle($area, $text, area, opts = {}) {
+	if (!area || (opts.isNameArea && area.enabled === false)) {
+		$area.hide();
+		return;
 	}
-}
 
-function verticalAlignToFlex(verticalAlign) {
-	if (verticalAlign === "top") return "flex-start";
-	if (verticalAlign === "bottom") return "flex-end";
-	return "center";
-}
-
-function applyAreaStyle($area, $text, areaConfig) {
-	if (!areaConfig) return;
-	const styling = areaConfig.styling ?? {};
-
-	$area.css({
-		top: areaConfig.top ?? "0%",
-		left: areaConfig.left ?? "0%",
-		width: areaConfig.width ?? "auto",
-		height: areaConfig.height ?? "auto",
+	$area.show().css({
+		top: `${area.top}%`,
+		left: `${area.left}%`,
+		width: `${area.width}%`,
+		height: `${area.height}%`,
 		display: "flex",
 		flexDirection: "column",
-		justifyContent: verticalAlignToFlex(areaConfig.vertical_align),
-		textAlign: areaConfig.align ?? "left",
+		justifyContent: "flex-start",
+		textAlign: "left",
 	});
 
-	const hasOutline = styling.outline_color && styling.outline_thickness && styling.outline_thickness !== "0px";
-
 	$text.css({
-		fontFamily: styling.font_family ? `"${styling.font_family}"` : "",
-		fontSize: styling.font_size ?? "",
-		color: styling.font_color ?? "",
-		lineHeight: areaConfig.line_height ?? "",
-		textShadow: styling.shadow ? "2px 2px 4px rgba(0, 0, 0, 0.8)" : "none",
-		WebkitTextStroke: hasOutline ? `${styling.outline_thickness} ${styling.outline_color}` : "",
+		fontSize: `${area.fontSize}px`,
+		color: area.fontColor,
+		textShadow: area.shadow ? "2px 2px 4px rgba(0, 0, 0, 0.8)" : "none",
+	});
+}
+
+function applyScale() {
+	const scale = clamp(Number(settings().textboxScale) || 100, 50, 200) / 100;
+	$("#prome-custom-textbox").css({
+		transform: scale !== 1 ? `scale(${scale})` : "",
+		transformOrigin: "bottom center",
 	});
 }
 
@@ -179,9 +182,9 @@ function makeDraggable($textbox, $handle) {
 
 /**
  * Rebuilds and shows/hides the on-screen custom textbox based on the current settings
- * (enabled state + selected textbox). Safe to call any time settings change.
+ * (enabled state + selected textbox profile). Safe to call any time settings change.
  */
-export async function applyCustomTextboxMode() {
+export function applyCustomTextboxMode() {
 	injectCustomTextboxElement();
 
 	if (!settings().customTextboxEnabled) {
@@ -190,20 +193,19 @@ export async function applyCustomTextboxMode() {
 		return;
 	}
 
-	const textboxes = await getAvailableTextboxes();
-	const active = textboxes.find((textbox) => textbox.name === settings().activeTextbox);
+	const profile = getActiveProfile();
 
-	if (!active) {
+	if (!profile) {
 		$("#prome-custom-textbox").addClass("displayNone");
 		return;
 	}
 
-	$("#prome-textbox-bg").attr("src", active.imageUrl);
-	loadCustomFonts(active.config?.fonts);
-	applyAreaStyle($("#prome-textbox-name-area"), $("#prome-textbox-name-text"), active.config?.name_area);
-	applyAreaStyle($("#prome-textbox-dialogue-area"), $("#prome-textbox-dialogue-text"), active.config?.dialogue_area);
+	$("#prome-textbox-bg").attr("src", profile.imageUrl);
+	applyLiveAreaStyle($("#prome-textbox-name-area"), $("#prome-textbox-name-text"), profile.nameArea, { isNameArea: true });
+	applyLiveAreaStyle($("#prome-textbox-dialogue-area"), $("#prome-textbox-dialogue-text"), profile.dialogueArea);
 
 	restorePosition();
+	applyScale();
 	$("#prome-custom-textbox").removeClass("displayNone");
 }
 
@@ -310,45 +312,271 @@ export function playSequenceInTextbox(sequence, characterName) {
 }
 
 /* ---------------------------------------------------------------------- */
-/* Settings UI                                                            */
+/* Settings UI - Profile Management                                       */
 /* ---------------------------------------------------------------------- */
 
-async function refreshTextboxList() {
+function refreshProfileSelect() {
+	const profiles = getProfiles();
 	const $select = $("#prome-textbox-select");
-	$select.empty().append($("<option></option>").val("").text("Loading..."));
-
-	const textboxes = await getAvailableTextboxes();
 
 	$select.empty();
 	$select.append(
 		$("<option></option>")
 			.val("")
-			.text(textboxes.length ? "Select a textbox..." : "No textboxes found"),
+			.text(profiles.length ? "Select a textbox..." : "No textboxes yet - upload one to get started"),
 	);
 
-	for (const textbox of textboxes) {
-		$select.append($("<option></option>").val(textbox.name).text(textbox.name));
+	for (const profile of profiles) {
+		$select.append($("<option></option>").val(profile.id).text(profile.name));
 	}
 
-	const hasActive = textboxes.some((textbox) => textbox.name === settings().activeTextbox);
-	$select.val(hasActive ? settings().activeTextbox : "");
+	const hasActive = profiles.some((profile) => profile.id === settings().activeTextboxId);
+	$select.val(hasActive ? settings().activeTextboxId : "");
 
-	if (!hasActive && settings().activeTextbox) {
-		settings().activeTextbox = "";
+	if (!hasActive && settings().activeTextboxId) {
+		settings().activeTextboxId = null;
 		saveSettingsDebounced();
 	}
-
-	await applyCustomTextboxMode();
 }
 
-function onCustomTextboxEnable_Click(event) {
-	settings().customTextboxEnabled = Boolean($(event.target).prop("checked"));
+/**
+ * Populates the layout editor (image + areas + font controls) from the active profile,
+ * or hides it entirely if no profile is selected.
+ */
+function populateEditorControls() {
+	const profile = getActiveProfile();
+
+	$("#prome-textbox-editor").toggleClass("displayNone", !profile);
+	$("#prome-textbox-name-input").val(profile?.name ?? "").prop("disabled", !profile);
+	$("#prome-textbox-delete").toggleClass("disabled", !profile);
+
+	if (!profile) return;
+
+	$("#prome-textbox-editor-image").attr("src", profile.imageUrl);
+	renderEditorAreaBox($("#prome-textbox-editor-name-area"), profile.nameArea);
+	renderEditorAreaBox($("#prome-textbox-editor-dialogue-area"), profile.dialogueArea);
+
+	$("#prome-textbox-name-enabled").prop("checked", profile.nameArea.enabled !== false);
+	$("#prome-textbox-name-fontsize").val(profile.nameArea.fontSize);
+	$("#prome-textbox-name-color").val(profile.nameArea.fontColor);
+	$("#prome-textbox-name-shadow").prop("checked", Boolean(profile.nameArea.shadow));
+
+	$("#prome-textbox-dialogue-fontsize").val(profile.dialogueArea.fontSize);
+	$("#prome-textbox-dialogue-color").val(profile.dialogueArea.fontColor);
+	$("#prome-textbox-dialogue-shadow").prop("checked", Boolean(profile.dialogueArea.shadow));
+}
+
+async function onTextboxUpload_Change(event) {
+	const file = event.target.files?.[0];
+	event.target.value = "";
+	if (!file) return;
+
+	toastr.info("Uploading textbox image...", "Prome Textbox");
+	const imageUrl = await uploadTextboxImage(file);
+
+	if (!imageUrl) {
+		toastr.error("Failed to upload the textbox image.", "Prome Textbox");
+		return;
+	}
+
+	const profile = createDefaultProfile(file.name, imageUrl);
+	getProfiles().push(profile);
+	settings().activeTextboxId = profile.id;
+	saveSettingsDebounced();
+
+	refreshProfileSelect();
+	populateEditorControls();
+	applyCustomTextboxMode();
+	toastr.success("Textbox image uploaded. Adjust the name/dialogue areas below.", "Prome Textbox");
+}
+
+function onTextboxDelete_Click() {
+	const profile = getActiveProfile();
+	if (!profile) return;
+
+	if (!confirm(`Delete the textbox "${profile.name}"? This cannot be undone.`)) return;
+
+	settings().textboxProfiles = getProfiles().filter((item) => item.id !== profile.id);
+	settings().activeTextboxId = settings().textboxProfiles[0]?.id ?? null;
+	saveSettingsDebounced();
+
+	refreshProfileSelect();
+	populateEditorControls();
+	applyCustomTextboxMode();
+}
+
+function onTextboxProfileSelect_Change(event) {
+	settings().activeTextboxId = String($(event.target).val()) || null;
+	saveSettingsDebounced();
+	populateEditorControls();
+	applyCustomTextboxMode();
+}
+
+function onTextboxNameInput_Input(event) {
+	const profile = getActiveProfile();
+	if (!profile) return;
+
+	const name = String($(event.target).val() || "").trim();
+	profile.name = name || profile.name;
+	saveSettingsDebounced();
+	$(`#prome-textbox-select option[value="${profile.id}"]`).text(profile.name);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Settings UI - Layout Editor (drag/resize name & dialogue areas)        */
+/* ---------------------------------------------------------------------- */
+
+function renderEditorAreaBox($box, area) {
+	if (!area) return;
+	$box.css({ top: `${area.top}%`, left: `${area.left}%`, width: `${area.width}%`, height: `${area.height}%` });
+	$box.toggleClass("prome-textbox-editor-area-disabled", area.enabled === false);
+}
+
+function setupSingleAreaInteraction($stage, $box, getArea) {
+	let mode = null;
+	let startPoint = { x: 0, y: 0 };
+	let startRectPx = null;
+	let stageRect = null;
+
+	function onPointerMove(event) {
+		const area = getArea();
+		if (!mode || !area || !stageRect) return;
+
+		const point = event.touches?.[0] ?? event;
+		const dx = point.clientX - startPoint.x;
+		const dy = point.clientY - startPoint.y;
+
+		if (mode === "move") {
+			const leftPx = clamp(startRectPx.left + dx, 0, stageRect.width - startRectPx.width);
+			const topPx = clamp(startRectPx.top + dy, 0, stageRect.height - startRectPx.height);
+			area.left = round1((leftPx / stageRect.width) * 100);
+			area.top = round1((topPx / stageRect.height) * 100);
+		} else {
+			const widthPx = clamp(startRectPx.width + dx, 24, stageRect.width - startRectPx.left);
+			const heightPx = clamp(startRectPx.height + dy, 24, stageRect.height - startRectPx.top);
+			area.width = round1((widthPx / stageRect.width) * 100);
+			area.height = round1((heightPx / stageRect.height) * 100);
+		}
+
+		renderEditorAreaBox($box, area);
+	}
+
+	function onPointerUp() {
+		if (!mode) return;
+		mode = null;
+		$(document).off("mousemove.prometbeditor touchmove.prometbeditor mouseup.prometbeditor touchend.prometbeditor");
+		saveSettingsDebounced();
+		applyCustomTextboxMode();
+	}
+
+	function startInteraction(newMode) {
+		return (event) => {
+			const area = getArea();
+			if (!area) return;
+
+			mode = newMode;
+			const point = event.touches?.[0] ?? event;
+			startPoint = { x: point.clientX, y: point.clientY };
+			stageRect = $stage[0].getBoundingClientRect();
+			startRectPx = {
+				left: (area.left / 100) * stageRect.width,
+				top: (area.top / 100) * stageRect.height,
+				width: (area.width / 100) * stageRect.width,
+				height: (area.height / 100) * stageRect.height,
+			};
+
+			$(document).on("mousemove.prometbeditor touchmove.prometbeditor", onPointerMove);
+			$(document).on("mouseup.prometbeditor touchend.prometbeditor", onPointerUp);
+			event.preventDefault();
+			event.stopPropagation();
+		};
+	}
+
+	$box.on("mousedown touchstart", startInteraction("move"));
+	$box.find(".prome-editor-resize-handle").on("mousedown touchstart", startInteraction("resize"));
+}
+
+function setupEditorAreaInteractions() {
+	const $stage = $("#prome-textbox-editor-stage");
+	setupSingleAreaInteraction($stage, $("#prome-textbox-editor-name-area"), () => getActiveProfile()?.nameArea);
+	setupSingleAreaInteraction($stage, $("#prome-textbox-editor-dialogue-area"), () => getActiveProfile()?.dialogueArea);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Settings UI - Font/Style Controls                                       */
+/* ---------------------------------------------------------------------- */
+
+function onNameEnabled_Click(event) {
+	const profile = getActiveProfile();
+	if (!profile) return;
+	profile.nameArea.enabled = Boolean($(event.target).prop("checked"));
+	saveSettingsDebounced();
+	renderEditorAreaBox($("#prome-textbox-editor-name-area"), profile.nameArea);
+	applyCustomTextboxMode();
+}
+
+function onNameFontSize_Input(event) {
+	const profile = getActiveProfile();
+	if (!profile) return;
+	profile.nameArea.fontSize = clamp(Number($(event.target).val()) || 22, 8, 72);
 	saveSettingsDebounced();
 	applyCustomTextboxMode();
 }
 
-function onTextboxSelect_Change(event) {
-	settings().activeTextbox = String($(event.target).val());
+function onNameColor_Input(event) {
+	const profile = getActiveProfile();
+	if (!profile) return;
+	profile.nameArea.fontColor = String($(event.target).val());
+	saveSettingsDebounced();
+	applyCustomTextboxMode();
+}
+
+function onNameShadow_Click(event) {
+	const profile = getActiveProfile();
+	if (!profile) return;
+	profile.nameArea.shadow = Boolean($(event.target).prop("checked"));
+	saveSettingsDebounced();
+	applyCustomTextboxMode();
+}
+
+function onDialogueFontSize_Input(event) {
+	const profile = getActiveProfile();
+	if (!profile) return;
+	profile.dialogueArea.fontSize = clamp(Number($(event.target).val()) || 18, 8, 72);
+	saveSettingsDebounced();
+	applyCustomTextboxMode();
+}
+
+function onDialogueColor_Input(event) {
+	const profile = getActiveProfile();
+	if (!profile) return;
+	profile.dialogueArea.fontColor = String($(event.target).val());
+	saveSettingsDebounced();
+	applyCustomTextboxMode();
+}
+
+function onDialogueShadow_Click(event) {
+	const profile = getActiveProfile();
+	if (!profile) return;
+	profile.dialogueArea.shadow = Boolean($(event.target).prop("checked"));
+	saveSettingsDebounced();
+	applyCustomTextboxMode();
+}
+
+function onTextboxScale_Input(event) {
+	const value = clamp(Number($(event.target).val()) || 100, 50, 200);
+	settings().textboxScale = value;
+	$("#prome-textbox-scale-value").text(`${value}%`);
+	saveSettingsDebounced();
+	applyScale();
+}
+
+/* ---------------------------------------------------------------------- */
+/* Settings UI - Playback/Position Controls                               */
+/* ---------------------------------------------------------------------- */
+
+function onCustomTextboxEnable_Click(event) {
+	settings().customTextboxEnabled = Boolean($(event.target).prop("checked"));
 	saveSettingsDebounced();
 	applyCustomTextboxMode();
 }
@@ -386,8 +614,8 @@ function onTextboxResetPosition_Click() {
 }
 
 function onTextboxPreview_Click() {
-	if (!settings().customTextboxEnabled || !settings().activeTextbox) {
-		toastr.warning("Enable the custom textbox and select a textbox first.", "Prome Textbox");
+	if (!settings().customTextboxEnabled || !getActiveProfile()) {
+		toastr.warning("Enable the custom textbox and upload/select a textbox image first.", "Prome Textbox");
 		return;
 	}
 
@@ -414,7 +642,13 @@ export function setupCustomTextboxHTML() {
 		.val(settings().textboxStreamingSpeed)
 		.prop("disabled", !settings().textboxTextStreaming);
 
-	refreshTextboxList();
+	const scale = clamp(Number(settings().textboxScale) || 100, 50, 200);
+	$("#prome-textbox-scale").val(scale);
+	$("#prome-textbox-scale-value").text(`${scale}%`);
+
+	refreshProfileSelect();
+	populateEditorControls();
+	applyCustomTextboxMode();
 }
 
 /**
@@ -425,14 +659,30 @@ export function setupCustomTextboxJQuery() {
 	injectCustomTextboxElement();
 
 	$("#prome-textbox-enable").on("click", onCustomTextboxEnable_Click);
-	$("#prome-textbox-refresh").on("click", refreshTextboxList);
-	$("#prome-textbox-select").on("change", onTextboxSelect_Change);
+	$("#prome-textbox-upload-input").on("change", onTextboxUpload_Change);
+	$("#prome-textbox-upload").on("click", () => $("#prome-textbox-upload-input").trigger("click"));
+	$("#prome-textbox-delete").on("click", onTextboxDelete_Click);
+	$("#prome-textbox-select").on("change", onTextboxProfileSelect_Change);
+	$("#prome-textbox-name-input").on("input", onTextboxNameInput_Input);
+
+	$("#prome-textbox-name-enabled").on("click", onNameEnabled_Click);
+	$("#prome-textbox-name-fontsize").on("input", onNameFontSize_Input);
+	$("#prome-textbox-name-color").on("input", onNameColor_Input);
+	$("#prome-textbox-name-shadow").on("click", onNameShadow_Click);
+	$("#prome-textbox-dialogue-fontsize").on("input", onDialogueFontSize_Input);
+	$("#prome-textbox-dialogue-color").on("input", onDialogueColor_Input);
+	$("#prome-textbox-dialogue-shadow").on("click", onDialogueShadow_Click);
+
+	$("#prome-textbox-scale").on("input", onTextboxScale_Input);
+
 	$("#prome-textbox-auto-advance").on("click", onTextboxAutoAdvance_Click);
 	$("#prome-textbox-auto-advance-delay").on("input", onTextboxAutoAdvanceDelay_Input);
 	$("#prome-textbox-streaming").on("click", onTextboxStreaming_Click);
 	$("#prome-textbox-streaming-speed").on("input", onTextboxStreamingSpeed_Input);
 	$("#prome-textbox-reset-position").on("click", onTextboxResetPosition_Click);
 	$("#prome-textbox-preview").on("click", onTextboxPreview_Click);
+
+	setupEditorAreaInteractions();
 
 	$(document).on("click", "#prome-custom-textbox", (event) => {
 		if ($(event.target).closest("#prome-textbox-drag-handle").length) return;

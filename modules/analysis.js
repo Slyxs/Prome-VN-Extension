@@ -242,8 +242,24 @@ function reconcileSequenceWithOriginalText(parsed, originalText) {
 
 	for (const item of rawSequence) {
 		const segment = typeof item?.text_segment === "string" ? item.text_segment : "";
-		if (!segment) {
+		const hasClassification = Boolean(item?.expression) || Boolean(item?.background) || Boolean(item?.cg);
+
+		if (!segment && !hasClassification) {
+			// Completely empty segment (no text, no expression, no background, no cg at all) -
+			// discard it entirely, it carries nothing useful for the playback pipeline.
 			modified = true;
+			continue;
+		}
+
+		if (!segment) {
+			// No text, but still carries a classification (e.g. a silent expression/background/cg
+			// change) - keep it as a textless segment instead of dropping the classification.
+			reconciled.push({
+				text_segment: "",
+				expression: item.expression ?? null,
+				background: item.background ?? null,
+				cg: item.cg ?? null,
+			});
 			continue;
 		}
 
