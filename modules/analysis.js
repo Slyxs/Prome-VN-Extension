@@ -172,6 +172,7 @@ function buildSystemPrompt({ expressions, backgrounds, cgs, segmentLimit }) {
 		"- \"background\" should be null unless the scene/location genuinely changes in that segment. Do not set a background just because a segment exists; only set it on the segment where the scene/location actually changes.",
 		"- \"cg\" should be null unless a special event should show a CG instead of the character sprite.",
 		"- Never output a value for \"expression\", \"background\" or \"cg\" that isn't an exact, verbatim entry from the lists above. If you are unsure, pick the closest matching entry from the list rather than inventing a new one (except \"background\"/\"cg\", which may be null).",
+		"- Segments with empty or whitespace-only text_segment values are FORBIDDEN. Every segment must contain meaningful text from the message. Do not create a separate segment just for a space between sentences or quotes. If a boundary would result in a whitespace-only segment, merge that whitespace into the adjacent segment instead.",
 		"",
 		"CRITICAL TEXT INTEGRITY RULES (violating these invalidates your entire response):",
 		"- \"text_segment\" must be an EXACT, VERBATIM, contiguous substring of the original message: same characters, spelling, punctuation, capitalization, whitespace, quotes, asterisks and formatting.",
@@ -374,6 +375,48 @@ function validateSequenceClassifications(sequence, validExpressions, validBackgr
 }
 
 /**
+ * Merges segments whose text is empty or contains only whitespace into their nearest
+ * non-empty neighbor, carrying the neighbor's classification with it. This guarantees
+ * the LLM's rule against whitespace-only segments is enforced client-side even when
+ * the model ignores the instruction.
+ * @param {object[]} sequence - The validated sequence
+ * @returns {object[]} - The sequence with no whitespace-only segments
+ */
+function collapseWhitespaceSegments(sequence) {
+	const isWhitespaceOnly = (text) => typeof text === "string" && text.trim().length === 0;
+	if (!Array.isArray(sequence) || sequence.length === 0) return sequence;
+
+	const result = [];
+	let pendingWhitespace = [];
+
+	for (let i = 0; i < sequence.length; i++) {
+		const item = sequence[i];
+
+		if (isWhitespaceOnly(item.text_segment)) {
+			pendingWhitespace.push(item.text_segment);
+			continue;
+		}
+
+		if (pendingWhitespace.length > 0) {
+			// Attach trailing whitespace from the previous segment(s) to this segment.
+			const mergedText = pendingWhitespace.join("") + item.text_segment;
+			result.push({ ...item, text_segment: mergedText });
+			pendingWhitespace = [];
+		} else {
+			result.push(item);
+		}
+	}
+
+	if (pendingWhitespace.length > 0 && result.length > 0) {
+		// Whitespace remained at the very end; attach it to the last segment.
+		const last = result[result.length - 1];
+		last.text_segment += pendingWhitespace.join("");
+	}
+
+	return result;
+}
+
+/**
  * Enforces the user-configured maximum segment count by merging any segments beyond
  * the limit into the final one. Never drops or alters any text.
  * @param {object[]} sequence - The reconciled sequence
@@ -493,7 +536,9 @@ export async function analyzeMessageWithLLM(messageId) {
 		const { sequence: validatedSequence, modified: classificationModified } = validateSequenceClassifications(
 			reconciledSequence, expressions, backgrounds, cgs,
 		);
-		const finalSequence = enforceSegmentLimit(validatedSequence, segmentLimit);
+		const collapsedSequence = collapseWhitespaceSegments(validatedSequence);
+		const whitespaceModified = collapsedSequence.length !== validatedSequence.length;
+		const finalSequence = enforceSegmentLimit(collapsedSequence, segmentLimit);
 
 		if (textModified) {
 			console.warn(
@@ -505,6 +550,13 @@ export async function analyzeMessageWithLLM(messageId) {
 		if (classificationModified) {
 			console.warn(
 				`${LOG_TAG} The model returned a missing/invalid expression, background or CG on at least one segment. Invalid values were corrected (expressions carried forward, backgrounds/CGs cleared) to guarantee every segment has a valid expression.`,
+				LOG_STYLE_TAG, LOG_STYLE_WARN,
+			);
+		}
+
+		if (whitespaceModified) {
+			console.warn(
+				`${LOG_TAG} The model produced whitespace-only segment(s). They were merged into neighboring segments so no empty segment reaches the playback pipeline.`,
 				LOG_STYLE_TAG, LOG_STYLE_WARN,
 			);
 		}
