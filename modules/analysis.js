@@ -757,12 +757,6 @@ function resolveMessageCharacter(context, message) {
 	return context.characters[context.characterId] ?? null;
 }
 
-// Tracks message/swipe/text combinations that currently have an analysis in progress, so
-// that a second trigger for the exact same content (e.g. MESSAGE_SWIPED and
-// CHARACTER_MESSAGE_RENDERED both firing for the same swipe) is ignored instead of
-// kicking off a redundant, overlapping LLM call that can overwrite the first result.
-const inFlightAnalysis = new Set();
-
 /**
  * Analyzes a rendered character message using the configured LLM endpoint and
  * logs the resulting sequence to the console. Does nothing if LLM-Based
@@ -779,152 +773,146 @@ export async function analyzeMessageWithLLM(messageId) {
 	// analyze it (this shows up on MESSAGE_SWIPED, fired before generation completes).
 	if (!message || message.is_user || message.is_system || !message.mes || message.mes === "...") return;
 
+	const swipeId = message.swipe_id ?? 0;
+
+	// When swiping right past the last existing swipe to generate a brand new one, ST
+	// sets swipe_id to a new, not-yet-existing slot (swipe_id >= swipes.length) and fires
+	// MESSAGE_SWIPED immediately - but it only replaces the on-screen "..." placeholder in
+	// the DOM at that point, `message.mes` itself still holds the *previous* swipe's text
+	// until generation actually finishes. Analyzing here would misclassify the old text
+	// under the new swipe's slot. Bail out and let CHARACTER_MESSAGE_RENDERED (fired once
+	// the real text is ready) trigger the analysis instead.
+	if (Array.isArray(message.swipes) && swipeId >= message.swipes.length) return;
+
 	const character = resolveMessageCharacter(context, message);
 	if (!character) return;
 
 	const originalText = message.mes;
-	const swipeId = message.swipe_id ?? 0;
 	const textHash = hashText(originalText);
 
-	// Guard against duplicate/overlapping triggers for this exact message+swipe+text (see
-	// `inFlightAnalysis` above) - if one is already running, don't start another.
-	const analysisKey = `${messageId}:${swipeId}:${textHash}`;
-	if (inFlightAnalysis.has(analysisKey)) {
+	const cached = getCachedAnalysis(messageId, swipeId, textHash);
+	if (cached) {
 		console.log(
-			`${LOG_TAG} Analysis for this exact message/swipe is already in progress - ignoring duplicate trigger.`,
+			`${LOG_TAG} Message from "${character.name}" was already analyzed - replaying the cached result instead of calling the LLM again.`,
 			LOG_STYLE_TAG, LOG_STYLE_INFO,
+		);
+		playSequenceInTextbox(cached.sequence, character.name, getSpriteFolderName(character));
+		maybeUpdateSummary(messageId).catch(() => {});
+		return;
+	}
+
+	const url = trimTrailingSlash(settings().llmAnalysisUrl);
+	const model = settings().llmAnalysisModel;
+
+	if (!url || !model) {
+		console.warn(
+			`${LOG_TAG} LLM-Based classification is enabled, but the API URL and/or model isn't configured yet.`,
+			LOG_STYLE_TAG, LOG_STYLE_WARN,
 		);
 		return;
 	}
-	inFlightAnalysis.add(analysisKey);
+
+	const [expressions, backgroundsData, cgs] = await Promise.all([
+		getAvailableExpressions(character),
+		getAvailableBackgrounds(),
+		getAvailableCGs(),
+	]);
+
+	const backgrounds = [...new Set([...(backgroundsData.global ?? []), ...(backgroundsData.chat ?? [])])];
+	const segmentLimit = settings().segmentLimitEnabled ? Number(settings().segmentLimit) || null : null;
+
+	const summaryText = settings().summaryEnabled ? getMeta().summary?.text ?? null : null;
+	const backgroundHistory = settings().backgroundHistoryEnabled
+		? getRecentBackgroundHistory(messageId, Number(settings().backgroundHistoryCount) || 0)
+		: [];
+	const chatHistoryLines = settings().chatHistoryEnabled
+		? getRecentChatHistoryLines(messageId, Number(settings().chatHistoryCount) || 0)
+		: [];
+
+	const systemPrompt = buildSystemPrompt({
+		expressions, backgrounds, cgs, segmentLimit,
+		summaryText, backgroundHistory, chatHistoryLines,
+	});
+
+	console.log(
+		`${LOG_TAG} Sending message from "${character.name}" for LLM-based classification...`,
+		LOG_STYLE_TAG, LOG_STYLE_INFO,
+	);
 
 	try {
-		const cached = getCachedAnalysis(messageId, swipeId, textHash);
-		if (cached) {
-			console.log(
-				`${LOG_TAG} Message from "${character.name}" was already analyzed - replaying the cached result instead of calling the LLM again.`,
-				LOG_STYLE_TAG, LOG_STYLE_INFO,
-			);
-			playSequenceInTextbox(cached.sequence, character.name, getSpriteFolderName(character));
-			maybeUpdateSummary(messageId).catch(() => {});
-			return;
-		}
-
-		const url = trimTrailingSlash(settings().llmAnalysisUrl);
-		const model = settings().llmAnalysisModel;
-
-		if (!url || !model) {
-			console.warn(
-				`${LOG_TAG} LLM-Based classification is enabled, but the API URL and/or model isn't configured yet.`,
-				LOG_STYLE_TAG, LOG_STYLE_WARN,
-			);
-			return;
-		}
-
-		const [expressions, backgroundsData, cgs] = await Promise.all([
-			getAvailableExpressions(character),
-			getAvailableBackgrounds(),
-			getAvailableCGs(),
-		]);
-
-		const backgrounds = [...new Set([...(backgroundsData.global ?? []), ...(backgroundsData.chat ?? [])])];
-		const segmentLimit = settings().segmentLimitEnabled ? Number(settings().segmentLimit) || null : null;
-
-		const summaryText = settings().summaryEnabled ? getMeta().summary?.text ?? null : null;
-		const backgroundHistory = settings().backgroundHistoryEnabled
-			? getRecentBackgroundHistory(messageId, Number(settings().backgroundHistoryCount) || 0)
-			: [];
-		const chatHistoryLines = settings().chatHistoryEnabled
-			? getRecentChatHistoryLines(messageId, Number(settings().chatHistoryCount) || 0)
-			: [];
-
-		const systemPrompt = buildSystemPrompt({
-			expressions, backgrounds, cgs, segmentLimit,
-			summaryText, backgroundHistory, chatHistoryLines,
+		const response = await fetch(`${url}/chat/completions`, {
+			method: "POST",
+			headers: buildHeaders(),
+			body: JSON.stringify({
+				model,
+				messages: [
+					{ role: "system", content: systemPrompt },
+					{ role: "user", content: originalText },
+				],
+				temperature: 0.8,
+			}),
 		});
 
-		console.log(
-			`${LOG_TAG} Sending message from "${character.name}" for LLM-based classification...`,
-			LOG_STYLE_TAG, LOG_STYLE_INFO,
-		);
-
-		try {
-			const response = await fetch(`${url}/chat/completions`, {
-				method: "POST",
-				headers: buildHeaders(),
-				body: JSON.stringify({
-					model,
-					messages: [
-						{ role: "system", content: systemPrompt },
-						{ role: "user", content: originalText },
-					],
-					temperature: 0.8,
-				}),
-			});
-
-			if (!response.ok) {
-				throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-			}
-
-			const data = await response.json();
-			const content = data?.choices?.[0]?.message?.content ?? "";
-			const parsed = parseSequenceResponse(content);
-
-			if (!parsed) {
-				console.error(
-					`${LOG_TAG} Could not parse a valid JSON sequence from the model's response. Raw response:`,
-					LOG_STYLE_TAG, LOG_STYLE_ERROR, content,
-				);
-				toastr.error("Could not parse the model's response. Check the console for details.", "Prome Analysis");
-				return;
-			}
-
-			const { sequence: reconciledSequence, modified: textModified } = reconcileSequenceWithOriginalText(parsed, originalText);
-			const { sequence: validatedSequence, modified: classificationModified } = validateSequenceClassifications(
-				reconciledSequence, expressions, backgrounds, cgs,
-			);
-			const collapsedSequence = collapseWhitespaceSegments(validatedSequence);
-			const whitespaceModified = collapsedSequence.length !== validatedSequence.length;
-			const finalSequence = enforceSegmentLimit(collapsedSequence, segmentLimit);
-
-			if (textModified) {
-				console.warn(
-					`${LOG_TAG} The model's response didn't perfectly preserve the original text. Segments were realigned to guarantee no characters were lost or changed.`,
-					LOG_STYLE_TAG, LOG_STYLE_WARN,
-				);
-			}
-
-			if (classificationModified) {
-				console.warn(
-					`${LOG_TAG} The model returned a missing/invalid expression, background or CG on at least one segment. Invalid values were corrected (expressions carried forward, backgrounds/CGs cleared) to guarantee every segment has a valid expression.`,
-					LOG_STYLE_TAG, LOG_STYLE_WARN,
-				);
-			}
-
-			if (whitespaceModified) {
-				console.warn(
-					`${LOG_TAG} The model produced whitespace-only segment(s). They were merged into neighboring segments so no empty segment reaches the playback pipeline.`,
-					LOG_STYLE_TAG, LOG_STYLE_WARN,
-				);
-			}
-
-			console.log(
-				`${LOG_TAG} LLM classification result for "${character.name}":`,
-				LOG_STYLE_TAG, LOG_STYLE_SUCCESS,
-			);
-			console.log({ sequence: finalSequence });
-			if (console.table) console.table(finalSequence);
-
-			storeAnalysis(messageId, swipeId, textHash, finalSequence, computeResolvedBackground(messageId, finalSequence));
-			maybeUpdateSummary(messageId).catch(() => {});
-
-			playSequenceInTextbox(finalSequence, character.name, getSpriteFolderName(character));
-		} catch (err) {
-			console.error(`${LOG_TAG} LLM classification failed:`, LOG_STYLE_TAG, LOG_STYLE_ERROR, err);
-			toastr.error(`LLM classification failed: ${err.message}`, "Prome Analysis");
+		if (!response.ok) {
+			throw new Error(`HTTP ${response.status}: ${response.statusText}`);
 		}
-	} finally {
-		inFlightAnalysis.delete(analysisKey);
+
+		const data = await response.json();
+		const content = data?.choices?.[0]?.message?.content ?? "";
+		const parsed = parseSequenceResponse(content);
+
+		if (!parsed) {
+			console.error(
+				`${LOG_TAG} Could not parse a valid JSON sequence from the model's response. Raw response:`,
+				LOG_STYLE_TAG, LOG_STYLE_ERROR, content,
+			);
+			toastr.error("Could not parse the model's response. Check the console for details.", "Prome Analysis");
+			return;
+		}
+
+		const { sequence: reconciledSequence, modified: textModified } = reconcileSequenceWithOriginalText(parsed, originalText);
+		const { sequence: validatedSequence, modified: classificationModified } = validateSequenceClassifications(
+			reconciledSequence, expressions, backgrounds, cgs,
+		);
+		const collapsedSequence = collapseWhitespaceSegments(validatedSequence);
+		const whitespaceModified = collapsedSequence.length !== validatedSequence.length;
+		const finalSequence = enforceSegmentLimit(collapsedSequence, segmentLimit);
+
+		if (textModified) {
+			console.warn(
+				`${LOG_TAG} The model's response didn't perfectly preserve the original text. Segments were realigned to guarantee no characters were lost or changed.`,
+				LOG_STYLE_TAG, LOG_STYLE_WARN,
+			);
+		}
+
+		if (classificationModified) {
+			console.warn(
+				`${LOG_TAG} The model returned a missing/invalid expression, background or CG on at least one segment. Invalid values were corrected (expressions carried forward, backgrounds/CGs cleared) to guarantee every segment has a valid expression.`,
+				LOG_STYLE_TAG, LOG_STYLE_WARN,
+			);
+		}
+
+		if (whitespaceModified) {
+			console.warn(
+				`${LOG_TAG} The model produced whitespace-only segment(s). They were merged into neighboring segments so no empty segment reaches the playback pipeline.`,
+				LOG_STYLE_TAG, LOG_STYLE_WARN,
+			);
+		}
+
+		console.log(
+			`${LOG_TAG} LLM classification result for "${character.name}":`,
+			LOG_STYLE_TAG, LOG_STYLE_SUCCESS,
+		);
+		console.log({ sequence: finalSequence });
+		if (console.table) console.table(finalSequence);
+
+		storeAnalysis(messageId, swipeId, textHash, finalSequence, computeResolvedBackground(messageId, finalSequence));
+		maybeUpdateSummary(messageId).catch(() => {});
+
+		playSequenceInTextbox(finalSequence, character.name, getSpriteFolderName(character));
+	} catch (err) {
+		console.error(`${LOG_TAG} LLM classification failed:`, LOG_STYLE_TAG, LOG_STYLE_ERROR, err);
+		toastr.error(`LLM classification failed: ${err.message}`, "Prome Analysis");
 	}
 }
 
