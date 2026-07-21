@@ -630,6 +630,67 @@
                                 CGs are picked up automatically from the <b>user/images/prome-cgs</b> folder (created
                                 automatically on connect).
                             </small>
+
+                            <hr />
+
+                            <h4 data-i18n="Context Memory">Context Memory</h4>
+                            <small
+                                data-i18n="Give the LLM more context about the ongoing story so it makes fewer classification mistakes (e.g. picking the wrong background).">
+                                Give the LLM more context about the ongoing story so it makes fewer classification
+                                mistakes (e.g. picking the wrong background).
+                            </small>
+
+                            <label class="checkbox_label" for="prome-chat-history-enabled"
+                                title="Include the last few chat messages in the analysis prompt for context."
+                                data-i18n="[title]Include the last few chat messages in the analysis prompt for context.">
+                                <input id="prome-chat-history-enabled" type="checkbox" />
+                                <span data-i18n="Include Recent Chat History">Include Recent Chat History</span>
+                            </label>
+
+                            <div class="prome_vn_block flex-container flexFlowColumn">
+                                <label for="prome-chat-history-count" data-i18n="Message Count">Message Count</label>
+                                <input id="prome-chat-history-count" type="number" class="text_pole" min="0"
+                                    max="50" step="1" />
+                            </div>
+
+                            <label class="checkbox_label" for="prome-background-history-enabled"
+                                title="Tell the LLM which backgrounds were recently used, as a continuity hint."
+                                data-i18n="[title]Tell the LLM which backgrounds were recently used, as a continuity hint.">
+                                <input id="prome-background-history-enabled" type="checkbox" />
+                                <span data-i18n="Include Background History">Include Background History</span>
+                            </label>
+
+                            <div class="prome_vn_block flex-container flexFlowColumn">
+                                <label for="prome-background-history-count"
+                                    data-i18n="Message Count">Message Count</label>
+                                <input id="prome-background-history-count" type="number" class="text_pole" min="0"
+                                    max="50" step="1" />
+                            </div>
+
+                            <label class="checkbox_label" for="prome-summary-enabled"
+                                title="Periodically generate a short rolling summary of the story, sent along with each analysis request."
+                                data-i18n="[title]Periodically generate a short rolling summary of the story, sent along with each analysis request.">
+                                <input id="prome-summary-enabled" type="checkbox" />
+                                <span data-i18n="Enable Rolling Summary">Enable Rolling Summary</span>
+                            </label>
+
+                            <div class="prome_vn_block flex-container flexFlowColumn">
+                                <label for="prome-summary-interval"
+                                    data-i18n="Summary Interval (messages)">Summary Interval (messages)</label>
+                                <small
+                                    data-i18n="How many new messages must pass before the summary is regenerated.">
+                                    How many new messages must pass before the summary is regenerated.
+                                </small>
+                                <input id="prome-summary-interval" type="number" class="text_pole" min="1" max="200"
+                                    step="1" />
+                            </div>
+
+                            <div id="prome-summary-reset" class="menu_button menu_button_icon"
+                                title="Clear the current chat's rolling summary. It will be regenerated on the next eligible message."
+                                data-i18n="[title]Clear the current chat's rolling summary. It will be regenerated on the next eligible message.">
+                                <i class="fa-solid fa-trash"></i>
+                                <span data-i18n="Reset Summary">Reset Summary</span>
+                            </div>
                         </div>
                     </div>
                 </details>

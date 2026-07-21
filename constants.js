@@ -154,6 +154,14 @@ export const defaultSettings = {
 	segmentLimitEnabled: false,
 	segmentLimit: 5,
 
+	// Analysis Context Memory (per-chat rolling summary, chat history, background history)
+	summaryEnabled: false,
+	summaryInterval: 10,
+	chatHistoryEnabled: true,
+	chatHistoryCount: 5,
+	backgroundHistoryEnabled: true,
+	backgroundHistoryCount: 5,
+
 	// Custom Textboxes
 	customTextboxEnabled: false,
 	textboxProfiles: [],

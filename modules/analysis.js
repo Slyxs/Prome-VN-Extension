@@ -36,6 +36,280 @@ function buildHeaders() {
 }
 
 /* ---------------------------------------------------------------------- */
+/* Per-Chat Analysis Memory                                                */
+/* ---------------------------------------------------------------------- */
+/*
+ * Everything below is stored in `chatMetadata.promeAnalysis`, so it's scoped to the
+ * current chat file and persisted via `saveMetadata()`. Structure:
+ * {
+ *   summary: { text: string, uptoIndex: number, updatedAt: number } | null,
+ *   history: { [messageIndex: string]: { [swipeId: string]: {
+ *     textHash: string, sequence: object[], resolvedBackground: string|null, updatedAt: number
+ *   } } },
+ * }
+ * `history` doubles as both a replay cache (skip re-analyzing a message/swipe that was
+ * already classified) and the source for the "recent backgrounds" prompt context below.
+ * Entries are keyed by message index + swipe id, but are only ever trusted if their
+ * stored `textHash` still matches the message's current text - this makes the cache
+ * self-healing across message deletions/edits/reindexing without needing to explicitly
+ * track or repair index shifts.
+ */
+
+/**
+ * Computes a short, deterministic hash (FNV-1a, 32-bit) of a string. Used to detect
+ * whether a message's text still matches a previously cached analysis result.
+ * @param {string} text
+ * @returns {string} - The hash, as a hex string
+ */
+function hashText(text) {
+	let hash = 0x811c9dc5;
+	for (let i = 0; i < text.length; i++) {
+		hash ^= text.charCodeAt(i);
+		hash = Math.imul(hash, 0x01000193);
+	}
+	return (hash >>> 0).toString(16);
+}
+
+/**
+ * Gets (creating if necessary) the Prome analysis metadata object for the current chat.
+ * Always re-reads `chatMetadata` fresh from `getContext()` rather than caching a
+ * reference, since the metadata object is replaced whenever the chat changes.
+ * @returns {{summary: object|null, history: object}}
+ */
+function getMeta() {
+	const context = getContext();
+	context.chatMetadata.promeAnalysis = context.chatMetadata.promeAnalysis || {
+		summary: null,
+		history: {},
+	};
+	return context.chatMetadata.promeAnalysis;
+}
+
+/**
+ * Persists the current chat's metadata to the server.
+ */
+function saveMeta() {
+	getContext().saveMetadata?.();
+}
+
+/**
+ * Looks up a previously stored analysis result for a message/swipe, but only returns it
+ * if the message's current text still matches the hash it was stored with.
+ * @param {number} messageId
+ * @param {number} swipeId
+ * @param {string} textHash
+ * @returns {{sequence: object[], resolvedBackground: string|null}|null}
+ */
+function getCachedAnalysis(messageId, swipeId, textHash) {
+	const entry = getMeta().history?.[messageId]?.[swipeId];
+	return entry && entry.textHash === textHash ? entry : null;
+}
+
+/**
+ * Stores a classified sequence for a message/swipe, keyed alongside the text hash it
+ * was produced from, so it can be safely replayed later without re-invoking the LLM.
+ * @param {number} messageId
+ * @param {number} swipeId
+ * @param {string} textHash
+ * @param {object[]} sequence
+ * @param {string|null} resolvedBackground - The background in effect at the end of this message
+ */
+function storeAnalysis(messageId, swipeId, textHash, sequence, resolvedBackground) {
+	const meta = getMeta();
+	meta.history[messageId] = meta.history[messageId] || {};
+	meta.history[messageId][swipeId] = {
+		textHash,
+		sequence,
+		resolvedBackground: resolvedBackground ?? null,
+		updatedAt: Date.now(),
+	};
+	saveMeta();
+}
+
+/**
+ * Finds the most recently resolved background from any previously analyzed message
+ * before the given index, walking backwards through the chat.
+ * @param {number} beforeMessageId
+ * @returns {string|null}
+ */
+function getPreviousResolvedBackground(beforeMessageId) {
+	const context = getContext();
+	const meta = getMeta();
+
+	for (let idx = beforeMessageId - 1; idx >= 0; idx--) {
+		const message = context.chat[idx];
+		if (!message || message.is_user || message.is_system) continue;
+
+		const swipeId = message.swipe_id ?? 0;
+		const entry = meta.history?.[idx]?.[swipeId];
+		if (entry) return entry.resolvedBackground ?? null;
+	}
+
+	return null;
+}
+
+/**
+ * Walks the resolved background of each previously analyzed message before the given
+ * index, most recent first, collecting up to `count` entries in chronological order.
+ * Used to give the LLM continuity context on which backgrounds have recently been used.
+ * @param {number} beforeMessageId
+ * @param {number} count
+ * @returns {string[]}
+ */
+function getRecentBackgroundHistory(beforeMessageId, count) {
+	if (!count) return [];
+
+	const context = getContext();
+	const meta = getMeta();
+	const results = [];
+
+	for (let idx = beforeMessageId - 1; idx >= 0 && results.length < count; idx--) {
+		const message = context.chat[idx];
+		if (!message || message.is_user || message.is_system) continue;
+
+		const swipeId = message.swipe_id ?? 0;
+		const entry = meta.history?.[idx]?.[swipeId];
+		if (entry?.resolvedBackground) {
+			results.unshift(entry.resolvedBackground);
+		}
+	}
+
+	return results;
+}
+
+/**
+ * Returns the last `count` chat messages (user and character alike, system messages
+ * excluded) before the given message index, formatted as `Name: text` lines.
+ * @param {number} beforeMessageId
+ * @param {number} count
+ * @returns {string[]}
+ */
+function getRecentChatHistoryLines(beforeMessageId, count) {
+	if (!count) return [];
+
+	const context = getContext();
+	const start = Math.max(0, beforeMessageId - count);
+
+	return context.chat
+		.slice(start, beforeMessageId)
+		.filter((message) => message && !message.is_system && message.mes)
+		.map((message) => `${message.name}: ${message.mes}`);
+}
+
+/**
+ * Simulates playback of a classified sequence to determine which background is in
+ * effect by the end of the message, carrying forward the previous background if the
+ * message never changes it.
+ * @param {number} messageId
+ * @param {object[]} sequence
+ * @returns {string|null}
+ */
+function computeResolvedBackground(messageId, sequence) {
+	let current = getPreviousResolvedBackground(messageId);
+	for (const segment of sequence) {
+		if (segment.background) current = segment.background;
+	}
+	return current;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Rolling Summary                                                         */
+/* ---------------------------------------------------------------------- */
+
+/**
+ * Generates (or updates) the rolling story summary for the current chat, covering all
+ * messages since the last summary (or the whole chat, if none exists yet), using the
+ * same LLM endpoint/model configured for classification.
+ * @param {number} uptoIndex - The message index the summary should be updated up to (inclusive)
+ */
+async function generateSummary(uptoIndex) {
+	const url = trimTrailingSlash(settings().llmAnalysisUrl);
+	const model = settings().llmAnalysisModel;
+	if (!url || !model) return;
+
+	const meta = getMeta();
+	const previousSummary = meta.summary;
+	const fromIndex = previousSummary ? previousSummary.uptoIndex + 1 : 0;
+
+	const context = getContext();
+	const messageLines = context.chat
+		.slice(Math.max(0, fromIndex), uptoIndex + 1)
+		.filter((message) => message && !message.is_system && message.mes)
+		.map((message) => `${message.name}: ${message.mes}`);
+
+	if (messageLines.length === 0) return;
+
+	const promptLines = [
+		"You are maintaining a concise, up-to-date summary of an ongoing visual novel-style roleplay chat.",
+		"Write a short brief (a few sentences) covering: the story so far, where the characters currently are (location), and the current time of day, if it can be determined.",
+		"Keep it concise and focused on facts useful for continuity (location/scene, time of day, key relationship/plot state). Do not quote dialogue verbatim.",
+	];
+
+	if (previousSummary?.text) {
+		promptLines.push(
+			"",
+			"Previous summary:",
+			previousSummary.text,
+			"",
+			"Update the summary to incorporate the following new messages:",
+		);
+	} else {
+		promptLines.push("", "Summarize the following messages:");
+	}
+
+	promptLines.push("", ...messageLines);
+
+	console.log(
+		`${LOG_TAG} Updating rolling summary (messages ${fromIndex}-${uptoIndex})...`,
+		LOG_STYLE_TAG, LOG_STYLE_INFO,
+	);
+
+	try {
+		const response = await fetch(`${url}/chat/completions`, {
+			method: "POST",
+			headers: buildHeaders(),
+			body: JSON.stringify({
+				model,
+				messages: [{ role: "system", content: promptLines.join("\n") }],
+				temperature: 0.5,
+			}),
+		});
+
+		if (!response.ok) {
+			throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+		}
+
+		const data = await response.json();
+		const text = data?.choices?.[0]?.message?.content?.trim();
+		if (!text) throw new Error("Empty summary response.");
+
+		meta.summary = { text, uptoIndex, updatedAt: Date.now() };
+		saveMeta();
+
+		console.log(`${LOG_TAG} Rolling summary updated:`, LOG_STYLE_TAG, LOG_STYLE_SUCCESS, text);
+	} catch (err) {
+		console.error(`${LOG_TAG} Failed to update rolling summary:`, LOG_STYLE_TAG, LOG_STYLE_ERROR, err);
+	}
+}
+
+/**
+ * Checks whether enough new messages have accumulated since the last rolling summary
+ * to warrant generating a new one, and does so if needed. Safe to call on every
+ * classified message - does nothing if summaries are disabled or the interval hasn't
+ * elapsed yet.
+ * @param {number} currentMessageIndex
+ */
+async function maybeUpdateSummary(currentMessageIndex) {
+	if (!settings().summaryEnabled) return;
+
+	const interval = Math.max(1, Number(settings().summaryInterval) || 10);
+	const lastIndex = getMeta().summary?.uptoIndex ?? -1;
+	if (currentMessageIndex - lastIndex < interval) return;
+
+	await generateSummary(currentMessageIndex);
+}
+
+/* ---------------------------------------------------------------------- */
 /* Classification Method Switching                                        */
 /* ---------------------------------------------------------------------- */
 
@@ -144,7 +418,7 @@ export async function fetchAvailableModels() {
 /* LLM-Based Message Analysis                                             */
 /* ---------------------------------------------------------------------- */
 
-function buildSystemPrompt({ expressions, backgrounds, cgs, segmentLimit }) {
+function buildSystemPrompt({ expressions, backgrounds, cgs, segmentLimit, summaryText, backgroundHistory, chatHistoryLines }) {
 	const schemaExample = {
 		sequence: [
 			{
@@ -163,13 +437,41 @@ function buildSystemPrompt({ expressions, backgrounds, cgs, segmentLimit }) {
 		`Available expressions for this character: ${expressions.length ? expressions.join(", ") : "(none available)"}`,
 		`Available backgrounds: ${backgrounds.length ? backgrounds.join(", ") : "(none available)"}`,
 		`Available CGs: ${cgs.length ? cgs.join(", ") : "(none available yet, always use null)"}`,
+	];
+
+	if (summaryText) {
+		lines.push(
+			"",
+			"Story summary so far (for context only - do not classify or output segments for this):",
+			summaryText,
+		);
+	}
+
+	if (chatHistoryLines?.length) {
+		lines.push(
+			"",
+			"Recent chat history, most recent last (for context only - do not classify or output segments for this):",
+			...chatHistoryLines,
+		);
+	}
+
+	if (backgroundHistory?.length) {
+		lines.push(
+			"",
+			`On the last ${backgroundHistory.length} message(s), the backgrounds in effect were, in order:`,
+			...backgroundHistory.map((bg) => `- ${bg}`),
+			"Use this only as a continuity reference for which background is currently active. Only change the background if the new message's text clearly indicates the scene/location changed - do not change it just because it's listed here.",
+		);
+	}
+
+	lines.push(
 		"",
 		"Your task must be done accurately: carefully read the whole message first and identify every point where the character's emotion/expression changes, and every point where the scene/location (background) changes, before splitting it into segments. Do not miss real changes, and do not invent changes that are not actually there.",
 		"",
 		"Rules:",
 		"- Only use values from the lists above, matched exactly (case-sensitive), for \"expression\", \"background\" and \"cg\".",
 		"- \"expression\" must NEVER be null or an empty string. Every single segment, with no exceptions, must specify the character's current expression as one of the exact values from the \"Available expressions\" list above, even if it is the same expression as the previous segment (i.e. the character's expression did not change in that segment). Pick whichever available expression most closely matches the character's emotional/physical state during that segment.",
-		"- \"background\" should be null unless the scene/location genuinely changes in that segment. Do not set a background just because a segment exists; only set it on the segment where the scene/location actually changes.",
+		"- \"background\" should be null for the vast majority of segments. Only set \"background\" to a non-null value when the scene or location explicitly changes in the text, such as the character moving from the street into a cafe, entering a different room, or a stated environmental shift happening (e.g. 'the sun set over the forest', 'we arrived at the beach'). Do not set a background just because a segment exists, just because the character's expression changes, or just because a new sentence starts.",
 		"- \"cg\" should be null unless a special event should show a CG instead of the character sprite.",
 		"- Never output a value for \"expression\", \"background\" or \"cg\" that isn't an exact, verbatim entry from the lists above. If you are unsure, pick the closest matching entry from the list rather than inventing a new one (except \"background\"/\"cg\", which may be null).",
 		"- Segments with empty or whitespace-only text_segment values are FORBIDDEN. Every segment must contain meaningful text from the message. Do not create a separate segment just for a space between sentences or quotes. If a boundary would result in a whitespace-only segment, merge that whitespace into the adjacent segment instead.",
@@ -179,7 +481,7 @@ function buildSystemPrompt({ expressions, backgrounds, cgs, segmentLimit }) {
 		"- You must NEVER paraphrase, translate, summarize, censor, correct typos/grammar, add, or remove any text, including emotes, action markers (e.g. *text*), or punctuation.",
 		"- Concatenating every \"text_segment\" in order, with nothing added, removed, or reordered, must reproduce the original message character-for-character.",
 		"- Every single character of the original message must belong to exactly one segment. Do not skip or drop any part of the message.",
-	];
+	);
 
 	if (segmentLimit) {
 		lines.push(
@@ -464,6 +766,31 @@ function resolveMessageCharacter(context, message) {
 export async function analyzeMessageWithLLM(messageId) {
 	if (settings().classificationMethod !== CLASSIFICATION_METHODS.LLM) return;
 
+	const context = getContext();
+	const message = context.chat[messageId];
+
+	// "..." is ST's placeholder text while a swipe/generation is still in progress - never
+	// analyze it (this shows up on MESSAGE_SWIPED, fired before generation completes).
+	if (!message || message.is_user || message.is_system || !message.mes || message.mes === "...") return;
+
+	const character = resolveMessageCharacter(context, message);
+	if (!character) return;
+
+	const originalText = message.mes;
+	const swipeId = message.swipe_id ?? 0;
+	const textHash = hashText(originalText);
+
+	const cached = getCachedAnalysis(messageId, swipeId, textHash);
+	if (cached) {
+		console.log(
+			`${LOG_TAG} Message from "${character.name}" was already analyzed - replaying the cached result instead of calling the LLM again.`,
+			LOG_STYLE_TAG, LOG_STYLE_INFO,
+		);
+		playSequenceInTextbox(cached.sequence, character.name, getSpriteFolderName(character));
+		maybeUpdateSummary(messageId).catch(() => {});
+		return;
+	}
+
 	const url = trimTrailingSlash(settings().llmAnalysisUrl);
 	const model = settings().llmAnalysisModel;
 
@@ -475,16 +802,6 @@ export async function analyzeMessageWithLLM(messageId) {
 		return;
 	}
 
-	const context = getContext();
-	const message = context.chat[messageId];
-
-	if (!message || message.is_user || message.is_system || !message.mes) return;
-
-	const character = resolveMessageCharacter(context, message);
-	if (!character) return;
-
-	const originalText = message.mes;
-
 	const [expressions, backgroundsData, cgs] = await Promise.all([
 		getAvailableExpressions(character),
 		getAvailableBackgrounds(),
@@ -494,7 +811,18 @@ export async function analyzeMessageWithLLM(messageId) {
 	const backgrounds = [...new Set([...(backgroundsData.global ?? []), ...(backgroundsData.chat ?? [])])];
 	const segmentLimit = settings().segmentLimitEnabled ? Number(settings().segmentLimit) || null : null;
 
-	const systemPrompt = buildSystemPrompt({ expressions, backgrounds, cgs, segmentLimit });
+	const summaryText = settings().summaryEnabled ? getMeta().summary?.text ?? null : null;
+	const backgroundHistory = settings().backgroundHistoryEnabled
+		? getRecentBackgroundHistory(messageId, Number(settings().backgroundHistoryCount) || 0)
+		: [];
+	const chatHistoryLines = settings().chatHistoryEnabled
+		? getRecentChatHistoryLines(messageId, Number(settings().chatHistoryCount) || 0)
+		: [];
+
+	const systemPrompt = buildSystemPrompt({
+		expressions, backgrounds, cgs, segmentLimit,
+		summaryText, backgroundHistory, chatHistoryLines,
+	});
 
 	console.log(
 		`${LOG_TAG} Sending message from "${character.name}" for LLM-based classification...`,
@@ -568,6 +896,9 @@ export async function analyzeMessageWithLLM(messageId) {
 		console.log({ sequence: finalSequence });
 		if (console.table) console.table(finalSequence);
 
+		storeAnalysis(messageId, swipeId, textHash, finalSequence, computeResolvedBackground(messageId, finalSequence));
+		maybeUpdateSummary(messageId).catch(() => {});
+
 		playSequenceInTextbox(finalSequence, character.name, getSpriteFolderName(character));
 	} catch (err) {
 		console.error(`${LOG_TAG} LLM classification failed:`, LOG_STYLE_TAG, LOG_STYLE_ERROR, err);
@@ -624,6 +955,52 @@ export function onSegmentLimit_Input(event) {
 	saveSettingsDebounced();
 }
 
+export function onSummaryEnabled_Click(event) {
+	settings().summaryEnabled = Boolean($(event.target).prop("checked"));
+	saveSettingsDebounced();
+	$("#prome-summary-interval").prop("disabled", !settings().summaryEnabled);
+}
+
+export function onSummaryInterval_Input(event) {
+	const value = Math.max(1, Number($(event.target).val()) || 1);
+	settings().summaryInterval = value;
+	$(event.target).val(value);
+	saveSettingsDebounced();
+}
+
+export function onSummaryReset_Click() {
+	const meta = getMeta();
+	meta.summary = null;
+	saveMeta();
+	toastr.success("The rolling summary for this chat has been reset.", "Prome Analysis");
+}
+
+export function onChatHistoryEnabled_Click(event) {
+	settings().chatHistoryEnabled = Boolean($(event.target).prop("checked"));
+	saveSettingsDebounced();
+	$("#prome-chat-history-count").prop("disabled", !settings().chatHistoryEnabled);
+}
+
+export function onChatHistoryCount_Input(event) {
+	const value = Math.max(0, Number($(event.target).val()) || 0);
+	settings().chatHistoryCount = value;
+	$(event.target).val(value);
+	saveSettingsDebounced();
+}
+
+export function onBackgroundHistoryEnabled_Click(event) {
+	settings().backgroundHistoryEnabled = Boolean($(event.target).prop("checked"));
+	saveSettingsDebounced();
+	$("#prome-background-history-count").prop("disabled", !settings().backgroundHistoryEnabled);
+}
+
+export function onBackgroundHistoryCount_Input(event) {
+	const value = Math.max(0, Number($(event.target).val()) || 0);
+	settings().backgroundHistoryCount = value;
+	$(event.target).val(value);
+	saveSettingsDebounced();
+}
+
 export function setupAnalysisHTML() {
 	$("#prome-classification-method").val(settings().classificationMethod);
 	$("#prome-analysis-url").val(settings().llmAnalysisUrl);
@@ -632,6 +1009,21 @@ export function setupAnalysisHTML() {
 	$("#prome-analysis-segment-limit")
 		.val(settings().segmentLimit)
 		.prop("disabled", !settings().segmentLimitEnabled);
+
+	$("#prome-summary-enabled").prop("checked", settings().summaryEnabled);
+	$("#prome-summary-interval")
+		.val(settings().summaryInterval)
+		.prop("disabled", !settings().summaryEnabled);
+
+	$("#prome-chat-history-enabled").prop("checked", settings().chatHistoryEnabled);
+	$("#prome-chat-history-count")
+		.val(settings().chatHistoryCount)
+		.prop("disabled", !settings().chatHistoryEnabled);
+
+	$("#prome-background-history-enabled").prop("checked", settings().backgroundHistoryEnabled);
+	$("#prome-background-history-count")
+		.val(settings().backgroundHistoryCount)
+		.prop("disabled", !settings().backgroundHistoryEnabled);
 
 	const $select = $("#prome-analysis-model");
 	$select.empty();
@@ -657,4 +1049,11 @@ export function setupAnalysisJQuery() {
 	$("#prome-analysis-fetch-models").on("click", onFetchModels_Click);
 	$("#prome-analysis-segment-limit-toggle").on("click", onSegmentLimitToggle_Click);
 	$("#prome-analysis-segment-limit").on("input", onSegmentLimit_Input);
+	$("#prome-summary-enabled").on("click", onSummaryEnabled_Click);
+	$("#prome-summary-interval").on("input", onSummaryInterval_Input);
+	$("#prome-summary-reset").on("click", onSummaryReset_Click);
+	$("#prome-chat-history-enabled").on("click", onChatHistoryEnabled_Click);
+	$("#prome-chat-history-count").on("input", onChatHistoryCount_Input);
+	$("#prome-background-history-enabled").on("click", onBackgroundHistoryEnabled_Click);
+	$("#prome-background-history-count").on("input", onBackgroundHistoryCount_Input);
 }

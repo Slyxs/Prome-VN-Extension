@@ -373,6 +373,9 @@ jQuery(async () => {
 	ensurePromeAssetFolders();
 
 	eventSource.on(event_types.MESSAGE_SWIPED, applyShakeDebounce);
+	eventSource.on(event_types.MESSAGE_SWIPED, (messageId) => {
+		analyzeMessageWithLLM(messageId);
+	});
 	eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, stopShake);
 	eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, (messageId) => {
 		analyzeMessageWithLLM(messageId);
