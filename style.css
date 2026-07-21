@@ -6,6 +6,9 @@
 	/* Prome Custom Textbox (one above the sprite's z-index of 2) */
 	--prome-textbox-zindex: 3;
 
+	/* Prome CG (Full-Screen Art), same layer as sprites - the CG replaces them while shown */
+	--prome-cg-zindex: 2;
+
 	/* Prome Focus/Defocus Mode */
 	--prome-focus-filter-transition: 0.4s ease-in;
 	--prome-focus-scale: 1.05;
@@ -92,6 +95,44 @@
 }
 
 .prome-custom-textbox.displayNone {
+	display: none !important;
+}
+
+.prome-custom-textbox.prome-textbox-manually-hidden {
+	display: none !important;
+}
+
+/* Prome CGs (Full-Screen Art) */
+.prome-cg-display {
+	position: fixed;
+	inset: 0;
+	z-index: var(--prome-cg-zindex);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background-color: #000;
+}
+
+.prome-cg-display.displayNone {
+	display: none !important;
+}
+
+.prome-cg-image {
+	max-width: 100%;
+	max-height: 100%;
+	width: auto;
+	height: auto;
+	object-fit: contain;
+}
+
+/* Hide the ST shell and character sprites while a CG is being shown */
+body.prome-cg-active #sheld,
+body.prome-cg-active #expression-holder,
+body.prome-cg-active #visual-novel-wrapper {
+	display: none !important;
+}
+
+body.prome-cg-active.prome-cg-hide-topbar #top-bar {
 	display: none !important;
 }
 

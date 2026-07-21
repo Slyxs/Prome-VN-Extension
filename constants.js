@@ -186,4 +186,7 @@ export const defaultSettings = {
 	spriteTransitionDuration: 400,
 	backgroundTransitionType: "fade",
 	backgroundTransitionDuration: 600,
+
+	// CGs (Full-Screen Art)
+	cgHideTopBar: true,
 };

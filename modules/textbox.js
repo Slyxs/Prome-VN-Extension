@@ -4,6 +4,7 @@ import { extensionName } from "../constants.js";
 import { uploadTextboxImage } from "../utils.js";
 import { sendExpressionCall } from "../../../expressions/index.js";
 import { getBackgroundPath } from "../../../../backgrounds.js";
+import { showCG, hideCG } from "./cg.js";
 
 /*
  * Custom Textboxes
@@ -42,8 +43,21 @@ const AREA_STYLE_DEFAULTS = {
 /** Whether the live, on-screen layout editor is currently active. */
 let editModeActive = false;
 
+/** Whether the textbox has been manually hidden by the user via the toggle keybind. */
+let manuallyHidden = false;
+
 function settings() {
 	return extension_settings[extensionName];
+}
+
+/**
+ * Toggles manually hiding/showing the custom textbox on-screen, independent of the
+ * "Enable" setting/active playback (e.g. bound to a keybind so the user can temporarily
+ * clear the textbox off-screen without disabling it or losing the current sequence).
+ */
+export function toggleTextboxManualHide() {
+	manuallyHidden = !manuallyHidden;
+	$("#prome-custom-textbox").toggleClass("prome-textbox-manually-hidden", manuallyHidden);
 }
 
 function clamp(value, min, max) {
@@ -316,6 +330,7 @@ export function applyCustomTextboxMode() {
 
 	if (!settings().customTextboxEnabled && !editModeActive) {
 		clearTimers();
+		hideCG();
 		$("#prome-custom-textbox").addClass("displayNone");
 		return;
 	}
@@ -323,6 +338,7 @@ export function applyCustomTextboxMode() {
 	const active = getActiveProfile();
 
 	if (!active) {
+		hideCG();
 		$("#prome-custom-textbox").addClass("displayNone");
 		return;
 	}
@@ -403,11 +419,13 @@ function resolveBackgroundCssUrl(name) {
 }
 
 /**
- * Applies a classified segment's expression/background to the on-screen sprite and
- * background, reusing SillyTavern's own expression system (so shakes, focus, VN
- * layering, group sprites, etc. all stay in sync) and background URL scheme. Fields left
- * null/unset on the segment are left untouched.
- * @param {{expression: string|null, background: string|null}|undefined} segment
+ * Applies a classified segment's expression/background/CG to the on-screen sprite,
+ * background and full-screen CG art, reusing SillyTavern's own expression system (so
+ * shakes, focus, VN layering, group sprites, etc. all stay in sync) and background URL
+ * scheme. Fields left null/unset on the segment are left untouched, except `cg`: a
+ * segment without a `cg` value hides any currently showing CG (CGs are only shown for
+ * segments that explicitly classify one).
+ * @param {{expression: string|null, background: string|null, cg: string|null}|undefined} segment
  */
 async function applySegmentVisuals(segment) {
 	if (!segment) return;
@@ -426,6 +444,16 @@ async function applySegmentVisuals(segment) {
 		} catch (err) {
 			console.error(`[${extensionName}] Failed to apply segment background:`, err);
 		}
+	}
+
+	if (segment.cg) {
+		try {
+			await showCG(segment.cg);
+		} catch (err) {
+			console.error(`[${extensionName}] Failed to apply segment CG:`, err);
+		}
+	} else {
+		hideCG();
 	}
 }
 

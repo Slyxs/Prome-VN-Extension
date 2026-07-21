@@ -257,6 +257,18 @@ export async function getAvailableCGs() {
 }
 
 /**
+ * Resolves a classified CG label (file name without extension) to the actual, publicly
+ * servable image URL of the matching file in the Prome CG folder.
+ * @param {string} label - The CG label (file name without extension)
+ * @returns {Promise<string|null>} - The client-relative image URL, or `null` if not found
+ */
+export async function getCgImagePath(label) {
+	const files = await listUserImageFolder(PROME_CG_FOLDER);
+	const file = files.find((name) => name.replace(/\.[^/.]+$/, "") === label);
+	return file ? `/user/images/${PROME_CG_FOLDER}/${file}` : null;
+}
+
+/**
  * Ensures the Prome CG and textbox asset folders exist on the server, creating them
  * if necessary.
  * @returns {Promise<void>}

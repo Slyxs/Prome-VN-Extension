@@ -101,11 +101,13 @@ import {
 	applyCustomTextboxMode,
 	setupCustomTextboxHTML,
 	setupCustomTextboxJQuery,
+	toggleTextboxManualHide,
 } from "./modules/textbox.js";
 import {
 	setupTransitionsHTML,
 	setupTransitionsJQuery,
 } from "./modules/transitions.js";
+import { hideCG, setupCgHTML, setupCgJQuery } from "./modules/cg.js";
 import { visualNovelUpdateLayers } from "../../expressions/index.js";
 
 async function loadSettings() {
@@ -231,6 +233,9 @@ async function loadSettings() {
 
 	// Transitions Updates
 	setupTransitionsHTML();
+
+	// CG Updates
+	setupCgHTML();
 
 	// Traditional VN Mode Updates
 	$("#prome-sheld-last_mes").prop(
@@ -366,6 +371,8 @@ jQuery(async () => {
 	setupCustomTextboxJQuery();
 	// Transitions
 	setupTransitionsJQuery();
+	// CGs
+	setupCgJQuery();
 
 	// User Sprite
 	$("#prome-user-sprite").on("click", onUserSprite_Click);
@@ -390,6 +397,7 @@ jQuery(async () => {
 		analyzeMessageWithLLM(messageId);
 	});
 	eventSource.on(event_types.CHAT_CHANGED, async () => {
+		hideCG();
 		await applyZoomDebounce();
 		await applyDefocusDebounce();
 		await applyScaleDebounce();
@@ -525,5 +533,13 @@ $(document).keydown((event) => {
 	if (event.which === 112 && event.ctrlKey) {
 		event.preventDefault();
 		$("#prome-hide-sheld").click();
+	}
+});
+
+// Toggle Custom Textbox via Ctrl+F2
+$(document).keydown((event) => {
+	if (event.which === 113 && event.ctrlKey) {
+		event.preventDefault();
+		toggleTextboxManualHide();
 	}
 });
