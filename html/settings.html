@@ -938,6 +938,59 @@
 
                         <hr />
 
+                        <label class="checkbox_label" for="prome-textbox-blip-enable"
+                            title="Play a short sound effect as text streams in, like classic VN typing 'blip' sounds."
+                            data-i18n="[title]Play a short sound effect as text streams in, like classic VN typing 'blip' sounds.">
+                            <input id="prome-textbox-blip-enable" type="checkbox" />
+                            <span data-i18n="Enable Typing Blip Sound">Enable Typing Blip Sound</span>
+                        </label>
+                        <div class="prome_vn_block flex-container flexFlowColumn">
+                            <label for="prome-textbox-blip-select" data-i18n="Blip Sound">Blip Sound</label>
+                            <small data-i18n="Upload a short sound effect to use as the typing blip. Only used while text streaming is enabled.">
+                                Upload a short sound effect to use as the typing blip. Only used while text streaming
+                                is enabled.
+                            </small>
+                            <div class="flex-container flexFlowRow alignitemsflexend">
+                                <div class="prome_vn_block flex-container flexFlowColumn flex1">
+                                    <select id="prome-textbox-blip-select"></select>
+                                </div>
+                                <div id="prome-textbox-blip-add" class="menu_button menu_button_icon"
+                                    title="Upload a new blip sound" data-i18n="[title]Upload a new blip sound">
+                                    <i class="fa-solid fa-upload"></i>
+                                    <span data-i18n="Add">Add</span>
+                                </div>
+                                <input id="prome-textbox-blip-file-input" type="file" accept="audio/*"
+                                    style="display: none;" />
+                                <div id="prome-textbox-blip-test" class="menu_button menu_button_icon"
+                                    title="Play the selected blip sound" data-i18n="[title]Play the selected blip sound">
+                                    <i class="fa-solid fa-play"></i>
+                                    <span data-i18n="Test">Test</span>
+                                </div>
+                                <div id="prome-textbox-blip-delete" class="menu_button menu_button_icon"
+                                    title="Delete this blip sound" data-i18n="[title]Delete this blip sound">
+                                    <i class="fa-solid fa-trash-can"></i>
+                                    <span data-i18n="Delete">Delete</span>
+                                </div>
+                            </div>
+
+                            <label class="checkbox_label" for="prome-textbox-blip-skip-spaces"
+                                title="Don't play the blip sound on spaces or punctuation."
+                                data-i18n="[title]Don't play the blip sound on spaces or punctuation.">
+                                <input id="prome-textbox-blip-skip-spaces" type="checkbox" />
+                                <span data-i18n="Skip Spaces/Punctuation">Skip Spaces/Punctuation</span>
+                            </label>
+
+                            <label for="prome-textbox-blip-volume" data-i18n="Blip Volume">Blip Volume</label>
+                            <div class="flex-container flexFlowRow">
+                                <input class="neo-range-slider" id="prome-textbox-blip-volume" type="range" min="0"
+                                    max="100" step="1" />
+                                <input class="neo-range-input" id="prome-textbox-blip-volume-counter" type="number"
+                                    min="0" max="100" step="1" data-for="prome-textbox-blip-volume" />
+                            </div>
+                        </div>
+
+                        <hr />
+
                         <div class="flex-container flexFlowRow">
                             <div id="prome-textbox-reset-position" class="menu_button menu_button_icon"
                                 title="Reset the textbox to its default position"
@@ -956,6 +1009,74 @@
                             Drag the textbox's handle (top-left grip) on-screen to reposition it. Click the textbox
                             (or wait for auto-advance) to move to the next segment.
                         </small>
+                    </div>
+                </details>
+
+                <!-- Transitions Configuration -->
+                <details>
+                    <summary data-i18n="Transitions">
+                        Transitions
+                    </summary>
+
+                    <div class="prome_vn_block flex-container flexFlowColumn prome_details_padding">
+                        <label class="checkbox_label" for="prome-transitions-enable"
+                            title="Fade sprites and backgrounds in whenever they change, instead of switching instantly."
+                            data-i18n="[title]Fade sprites and backgrounds in whenever they change, instead of switching instantly.">
+                            <input id="prome-transitions-enable" type="checkbox" />
+                            <span data-i18n="Enable Transitions">Enable Transitions</span>
+                        </label>
+
+                        <hr />
+
+                        <h4 data-i18n="Sprite Transition">Sprite Transition</h4>
+                        <small data-i18n="Applies whenever a character's expression/sprite changes, such as between classified segments.">
+                            Applies whenever a character's expression/sprite changes, such as between classified
+                            segments.
+                        </small>
+                        <div class="prome_vn_block flex-container flexFlowColumn">
+                            <label for="prome-sprite-transition-type" data-i18n="Transition Type">Transition Type</label>
+                            <select id="prome-sprite-transition-type">
+                                <option value="none" data-i18n="None">None</option>
+                                <option value="fade" data-i18n="Fade">Fade</option>
+                            </select>
+                        </div>
+                        <div class="prome_vn_block flex-container flexFlowColumn">
+                            <label for="prome-sprite-transition-duration" data-i18n="Fade Duration (ms)">Fade Duration
+                                (ms)</label>
+                            <div class="flex-container flexFlowRow">
+                                <input class="neo-range-slider" id="prome-sprite-transition-duration" type="range"
+                                    min="0" max="2000" step="50" />
+                                <input class="neo-range-input" id="prome-sprite-transition-duration-counter"
+                                    type="number" min="0" max="2000" step="50"
+                                    data-for="prome-sprite-transition-duration" />
+                            </div>
+                        </div>
+
+                        <hr />
+
+                        <h4 data-i18n="Background Transition">Background Transition</h4>
+                        <small data-i18n="Applies whenever the scene background changes, such as between classified segments.">
+                            Applies whenever the scene background changes, such as between classified segments.
+                        </small>
+                        <div class="prome_vn_block flex-container flexFlowColumn">
+                            <label for="prome-background-transition-type" data-i18n="Transition Type">Transition
+                                Type</label>
+                            <select id="prome-background-transition-type">
+                                <option value="none" data-i18n="None">None</option>
+                                <option value="fade" data-i18n="Fade">Fade</option>
+                            </select>
+                        </div>
+                        <div class="prome_vn_block flex-container flexFlowColumn">
+                            <label for="prome-background-transition-duration" data-i18n="Fade Duration (ms)">Fade
+                                Duration (ms)</label>
+                            <div class="flex-container flexFlowRow">
+                                <input class="neo-range-slider" id="prome-background-transition-duration" type="range"
+                                    min="0" max="3000" step="50" />
+                                <input class="neo-range-input" id="prome-background-transition-duration-counter"
+                                    type="number" min="0" max="3000" step="50"
+                                    data-for="prome-background-transition-duration" />
+                            </div>
+                        </div>
                     </div>
                 </details>
 

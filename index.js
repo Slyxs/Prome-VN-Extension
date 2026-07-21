@@ -102,6 +102,10 @@ import {
 	setupCustomTextboxHTML,
 	setupCustomTextboxJQuery,
 } from "./modules/textbox.js";
+import {
+	setupTransitionsHTML,
+	setupTransitionsJQuery,
+} from "./modules/transitions.js";
 import { visualNovelUpdateLayers } from "../../expressions/index.js";
 
 async function loadSettings() {
@@ -224,6 +228,9 @@ async function loadSettings() {
 
 	// Custom Textbox Updates
 	setupCustomTextboxHTML();
+
+	// Transitions Updates
+	setupTransitionsHTML();
 
 	// Traditional VN Mode Updates
 	$("#prome-sheld-last_mes").prop(
@@ -357,6 +364,8 @@ jQuery(async () => {
 	setupAnalysisJQuery();
 	// Custom Textbox
 	setupCustomTextboxJQuery();
+	// Transitions
+	setupTransitionsJQuery();
 
 	// User Sprite
 	$("#prome-user-sprite").on("click", onUserSprite_Click);

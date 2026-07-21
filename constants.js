@@ -172,4 +172,18 @@ export const defaultSettings = {
 	textboxAutoAdvanceDelay: 3000,
 	textboxTextStreaming: true,
 	textboxStreamingSpeed: 35,
+
+	// Textbox Typing Blip Sound
+	textboxBlipEnabled: false,
+	textboxBlipSounds: [],
+	textboxBlipActiveId: null,
+	textboxBlipVolume: 70,
+	textboxBlipSkipSpaces: true,
+
+	// Transitions
+	transitionsEnabled: false,
+	spriteTransitionType: "fade",
+	spriteTransitionDuration: 400,
+	backgroundTransitionType: "fade",
+	backgroundTransitionDuration: 600,
 };

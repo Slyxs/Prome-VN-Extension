@@ -108,6 +108,68 @@ function getActiveProfile() {
 }
 
 /* ---------------------------------------------------------------------- */
+/* Typing Blip Sound                                                      */
+/* ---------------------------------------------------------------------- */
+
+/** Blip sound effect files are short clips - 2MB is generous while keeping settings.json sane. */
+const MAX_BLIP_FILE_SIZE = 2 * 1024 * 1024;
+
+let blipAudioElement = null;
+
+function getBlipSounds() {
+	if (!Array.isArray(settings().textboxBlipSounds)) {
+		settings().textboxBlipSounds = [];
+	}
+	return settings().textboxBlipSounds;
+}
+
+function getActiveBlipSound() {
+	return getBlipSounds().find((sound) => sound.id === settings().textboxBlipActiveId) ?? null;
+}
+
+function readFileAsDataUrl(file) {
+	return new Promise((resolve, reject) => {
+		const reader = new FileReader();
+		reader.onload = () => resolve(String(reader.result));
+		reader.onerror = () => reject(reader.error);
+		reader.readAsDataURL(file);
+	});
+}
+
+/** Plays the active blip sound, reusing a single `<audio>` element (retriggering it on
+ * every call - short overlapping blips like classic VN "typing" sounds are expected to
+ * restart rather than queue/stack). */
+function playBlipSound() {
+	const sound = getActiveBlipSound();
+	if (!sound) return;
+
+	if (!blipAudioElement) {
+		blipAudioElement = new Audio();
+	}
+
+	if (blipAudioElement.src !== sound.dataUrl) {
+		blipAudioElement.src = sound.dataUrl;
+	}
+
+	blipAudioElement.volume = clamp(Number(settings().textboxBlipVolume) || 0, 0, 100) / 100;
+	blipAudioElement.currentTime = 0;
+	blipAudioElement.play().catch(() => {});
+}
+
+/**
+ * Called for each character revealed by the typewriter effect - plays the configured
+ * blip sound, unless it's disabled, unconfigured, or the character is whitespace and
+ * "Skip Spaces/Punctuation" is on.
+ * @param {string|undefined} char - the character that was just revealed
+ */
+function maybeBlip(char) {
+	if (!settings().textboxBlipEnabled) return;
+	if (!getActiveBlipSound()) return;
+	if (settings().textboxBlipSkipSpaces && (!char || /[\s.,!?;:'"()]/.test(char))) return;
+	playBlipSound();
+}
+
+/* ---------------------------------------------------------------------- */
 /* On-screen textbox DOM / Styling                                        */
 /* ---------------------------------------------------------------------- */
 
@@ -403,6 +465,7 @@ function renderSegment(index) {
 		typewriterTimer = setInterval(() => {
 			charIndex++;
 			$text.text(text.slice(0, charIndex));
+			maybeBlip(text[charIndex - 1]);
 
 			if (charIndex >= text.length) {
 				clearInterval(typewriterTimer);
@@ -823,6 +886,114 @@ function onTextboxResetPosition_Click() {
 	restorePosition();
 }
 
+/** Rebuilds the `<select>` of uploaded blip sounds and enables/disables the related buttons. */
+function refreshBlipSelect() {
+	const $select = $("#prome-textbox-blip-select");
+	const sounds = getBlipSounds();
+
+	$select.empty();
+	$select.append(
+		$("<option></option>")
+			.val("")
+			.text(sounds.length ? "Select a blip sound..." : "No blip sounds yet - click Add"),
+	);
+
+	for (const sound of sounds) {
+		$select.append($("<option></option>").val(sound.id).text(sound.name));
+	}
+
+	const hasActive = sounds.some((sound) => sound.id === settings().textboxBlipActiveId);
+	$select.val(hasActive ? settings().textboxBlipActiveId : "");
+
+	if (!hasActive && settings().textboxBlipActiveId) {
+		settings().textboxBlipActiveId = null;
+		saveSettingsDebounced();
+	}
+
+	$("#prome-textbox-blip-delete").toggleClass("disabled", !hasActive);
+	$("#prome-textbox-blip-test").toggleClass("disabled", !hasActive);
+}
+
+function onBlipEnable_Click(event) {
+	settings().textboxBlipEnabled = Boolean($(event.target).prop("checked"));
+	saveSettingsDebounced();
+}
+
+function onBlipSelect_Change(event) {
+	settings().textboxBlipActiveId = String($(event.target).val()) || null;
+	saveSettingsDebounced();
+	refreshBlipSelect();
+}
+
+function onBlipAdd_Click() {
+	$("#prome-textbox-blip-file-input").trigger("click");
+}
+
+async function onBlipFile_Change(event) {
+	const file = event.target.files?.[0];
+	event.target.value = "";
+	if (!file) return;
+
+	if (!file.type.startsWith("audio/")) {
+		toastr.error("Please select an audio file.", "Prome Textbox");
+		return;
+	}
+	if (file.size > MAX_BLIP_FILE_SIZE) {
+		toastr.error("Blip sound must be smaller than 2MB.", "Prome Textbox");
+		return;
+	}
+
+	try {
+		const dataUrl = await readFileAsDataUrl(file);
+		const name = file.name.replace(/\.[^/.]+$/, "") || `Blip ${getBlipSounds().length + 1}`;
+		const sound = { id: `blip_${Date.now()}`, name, dataUrl };
+
+		getBlipSounds().push(sound);
+		settings().textboxBlipActiveId = sound.id;
+		saveSettingsDebounced();
+
+		refreshBlipSelect();
+		toastr.success("Blip sound uploaded!", "Prome Textbox");
+	} catch (err) {
+		console.error(`[${extensionName}] Failed to upload blip sound:`, err);
+		toastr.error(`Could not upload the sound: ${err.message}`, "Prome Textbox");
+	}
+}
+
+function onBlipDelete_Click() {
+	const active = getActiveBlipSound();
+	if (!active) return;
+
+	if (!confirm(`Delete the blip sound "${active.name}"? This cannot be undone.`)) return;
+
+	settings().textboxBlipSounds = getBlipSounds().filter((sound) => sound.id !== active.id);
+	settings().textboxBlipActiveId = null;
+	saveSettingsDebounced();
+
+	refreshBlipSelect();
+}
+
+function onBlipVolume_Input(event) {
+	const value = clamp(Number($(event.target).val()) || 0, 0, 100);
+	settings().textboxBlipVolume = value;
+	$("#prome-textbox-blip-volume").val(value);
+	$("#prome-textbox-blip-volume-counter").val(value);
+	saveSettingsDebounced();
+}
+
+function onBlipSkipSpaces_Click(event) {
+	settings().textboxBlipSkipSpaces = Boolean($(event.target).prop("checked"));
+	saveSettingsDebounced();
+}
+
+function onBlipTest_Click() {
+	if (!getActiveBlipSound()) {
+		toastr.warning("Select a blip sound first.", "Prome Textbox");
+		return;
+	}
+	playBlipSound();
+}
+
 function onTextboxPreview_Click() {
 	if (!settings().customTextboxEnabled || !getActiveProfile()) {
 		toastr.warning("Enable the custom textbox and select a textbox first.", "Prome Textbox");
@@ -907,6 +1078,12 @@ export function setupCustomTextboxHTML() {
 		.val(settings().textboxStreamingSpeed)
 		.prop("disabled", !settings().textboxTextStreaming);
 
+	$("#prome-textbox-blip-enable").prop("checked", settings().textboxBlipEnabled);
+	$("#prome-textbox-blip-skip-spaces").prop("checked", settings().textboxBlipSkipSpaces);
+	$("#prome-textbox-blip-volume").val(settings().textboxBlipVolume);
+	$("#prome-textbox-blip-volume-counter").val(settings().textboxBlipVolume);
+	refreshBlipSelect();
+
 	refreshTextboxProfileSelect();
 	refreshAreaStyleControls();
 	applyCustomTextboxMode();
@@ -934,6 +1111,16 @@ export function setupCustomTextboxJQuery() {
 	$("#prome-textbox-streaming-speed").on("input", onTextboxStreamingSpeed_Input);
 	$("#prome-textbox-reset-position").on("click", onTextboxResetPosition_Click);
 	$("#prome-textbox-preview").on("click", onTextboxPreview_Click);
+
+	$("#prome-textbox-blip-enable").on("click", onBlipEnable_Click);
+	$("#prome-textbox-blip-select").on("change", onBlipSelect_Change);
+	$("#prome-textbox-blip-add").on("click", onBlipAdd_Click);
+	$("#prome-textbox-blip-file-input").on("change", onBlipFile_Change);
+	$("#prome-textbox-blip-delete").on("click", onBlipDelete_Click);
+	$("#prome-textbox-blip-volume").on("input", onBlipVolume_Input);
+	$("#prome-textbox-blip-volume-counter").on("input", onBlipVolume_Input);
+	$("#prome-textbox-blip-skip-spaces").on("click", onBlipSkipSpaces_Click);
+	$("#prome-textbox-blip-test").on("click", onBlipTest_Click);
 
 	$("[data-area][data-field]").on("input change", onAreaStyleControl_Change);
 
