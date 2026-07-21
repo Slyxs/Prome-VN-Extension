@@ -288,6 +288,45 @@ let typewriterTimer = null;
 let advanceTimer = null;
 
 /**
+ * Incremented every time a new sequence starts playing (`playSequenceInTextbox`), so
+ * that a stale, still-pending `reassertCurrentSegmentVisuals` timer from a previous
+ * swipe/message can recognize it's no longer relevant and no-op instead of clobbering
+ * whatever is actually being shown now.
+ */
+let playbackGeneration = 0;
+
+/*
+ * ST's own expressions extension keeps running its built-in classification
+ * `moduleWorker()` on a fixed ~2000ms interval REGARDLESS of `expressions.api`
+ * (Prome forces it to "none" while LLM classification is active, but the worker itself
+ * still runs) - it only skips actually calling the classifier, then still calls
+ * `sendExpressionCall(..., "", ...)` with an empty label whenever it notices the active
+ * character's last message text changed (e.g. because the user swiped to a different,
+ * already-classified/cached swipe). With no sprite matching an empty label (and no ST
+ * "Fallback Expression" configured), this hides the sprite entirely (adds the `hidden`
+ * class / blanks the image `src`) - a race that can land shortly AFTER Prome's own
+ * correct `sendExpressionCall` for the first segment, making the sprite disappear until
+ * the next segment's classified expression is applied and un-hides it again. Since this
+ * stray call only ever fires (at most) once per swipe/message-change, re-asserting the
+ * currently active segment's visuals once, after ST's own interval has had a chance to
+ * fire, reliably wins the race without needing any ST core changes.
+ */
+const EXPRESSION_RACE_GUARD_DELAY_MS = 2200;
+
+/**
+ * Re-applies whichever segment is currently being displayed, guarding against ST's own
+ * expression classifier racing with (and undoing) our classified expression shortly
+ * after a swipe/message change - see `EXPRESSION_RACE_GUARD_DELAY_MS` above. No-ops if
+ * a newer sequence has started playing since this was scheduled.
+ * @param {number} generation - The `playbackGeneration` value captured when scheduled
+ */
+function reassertCurrentSegmentVisuals(generation) {
+	if (generation !== playbackGeneration) return;
+	if (currentIndex < 0 || currentIndex >= currentSequence.length) return;
+	applySegmentVisuals(currentSequence[currentIndex]);
+}
+
+/**
  * Resolves the CSS `background-image` value for a classified background name, matching
  * ST's own background URL scheme (see `public/scripts/backgrounds.js`): backgrounds that
  * are locked/custom to the current chat use their path as-is, everything else is treated
@@ -419,6 +458,9 @@ export function playSequenceInTextbox(sequence, characterName, spriteFolderName 
 	currentSequence = sequence;
 	currentIndex = 0;
 	currentSpriteFolderName = spriteFolderName;
+
+	const generation = ++playbackGeneration;
+	setTimeout(() => reassertCurrentSegmentVisuals(generation), EXPRESSION_RACE_GUARD_DELAY_MS);
 
 	$("#prome-textbox-name-text").text(characterName ?? "");
 	renderSegment(0);
